@@ -1,16 +1,27 @@
 export type ChecklistStatus = "good" | "minor_issue" | "major_issue" | "missing";
 export type FinancialStatus = "pending" | "submitted" | "approved" | "rejected" | "paid";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type CompletionStatus = "open" | "ready" | "completed";
 export type DefectStatus = "open" | "in_progress" | "closed";
 export type UserRole = "master_admin" | "client" | "contractor" | "subcontractor" | "consultant";
 export type RecordSectionType =
+  | "contractor_submission"
+  | "consultant_submission"
   | "survey_item"
   | "daily_report"
   | "weekly_report"
   | "financial_record"
   | "defect";
 
-export type ModuleKey = "overview" | "handover" | "daily_reports" | "weekly_reports" | "financials" | "completion" | "defects";
+export type ModuleKey =
+  | "overview"
+  | "contractor_submissions"
+  | "handover"
+  | "daily_reports"
+  | "weekly_reports"
+  | "financials"
+  | "completion"
+  | "defects";
 
 export type ModulePermissions = Record<ModuleKey, boolean>;
 
@@ -55,6 +66,28 @@ export type ProjectOverview = {
   completionDate: string | null;
 };
 
+export type ContractorPartyType = "main_contractor" | "subcontractor";
+export type ContractorTrade =
+  | "architectural"
+  | "electrical"
+  | "plumbing_sanitary"
+  | "fire_protection"
+  | "electrical_low_voltage";
+export type ConsultantTrade = "architect" | "mep";
+
+export type ProjectContractor = {
+  id: string;
+  companyName: string;
+  contractorType: ContractorPartyType;
+  trades: ContractorTrade[];
+};
+
+export type ProjectConsultant = {
+  id: string;
+  companyName: string;
+  trades: ConsultantTrade[];
+};
+
 export type Milestone = {
   id: string;
   title: string;
@@ -67,6 +100,57 @@ export type SurveyItem = {
   item: string;
   status: ChecklistStatus;
   details: string;
+  attachments: AttachmentRecord[];
+};
+
+export type ContractorSubmissionItemType = "material_submission" | "method_statement" | "project_programme" | "rfi";
+
+export type ContractorSubmissionItem = {
+  id: string;
+  submissionType: ContractorSubmissionItemType;
+  description: string;
+  quantity: number | null;
+  unit: string;
+};
+
+export type ContractorSubmission = {
+  id: string;
+  submittedDate: string;
+  items: ContractorSubmissionItem[];
+  ownerUserId: string;
+  ownerEmail: string;
+  ownerRole: UserRole;
+  clientStatus: ApprovalStatus;
+  clientReviewedAt: string | null;
+  clientReviewedByUserId: string | null;
+  clientReviewedByEmail: string;
+  clientReviewNote: string;
+  consultantStatus: ApprovalStatus;
+  consultantReviewedAt: string | null;
+  consultantReviewedByUserId: string | null;
+  consultantReviewedByEmail: string;
+  consultantReviewNote: string;
+  attachments: AttachmentRecord[];
+};
+
+export type ConsultantSubmissionItem = {
+  id: string;
+  documentType: string;
+  description: string;
+};
+
+export type ConsultantSubmission = {
+  id: string;
+  submittedDate: string;
+  items: ConsultantSubmissionItem[];
+  ownerUserId: string;
+  ownerEmail: string;
+  ownerRole: UserRole;
+  status: ApprovalStatus;
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+  reviewedByEmail: string;
+  reviewNote: string;
   attachments: AttachmentRecord[];
 };
 
@@ -125,11 +209,27 @@ export type DefectRecord = {
   attachments: AttachmentRecord[];
 };
 
+export type ProjectNotification = {
+  id: string;
+  projectId: string;
+  actorUserId: string | null;
+  actorEmail: string;
+  action: string;
+  section: string;
+  title: string;
+  details: string;
+  createdAt: string;
+};
+
 export type ProjectBundle = {
   overview: ProjectOverview;
   access: ProjectAccess;
   members: ProjectMember[];
+  projectContractors: ProjectContractor[];
+  projectConsultants: ProjectConsultant[];
   milestones: Milestone[];
+  contractorSubmissions: ContractorSubmission[];
+  consultantSubmissions: ConsultantSubmission[];
   surveyItems: SurveyItem[];
   dailyReports: DailyReport[];
   weeklyReports: WeeklyReport[];
@@ -137,6 +237,7 @@ export type ProjectBundle = {
   completionChecklist: CompletionChecklistItem[];
   defectZones: DefectZone[];
   defects: DefectRecord[];
+  notifications: ProjectNotification[];
 };
 
 export type AdminProjectSummary = {
@@ -144,6 +245,7 @@ export type AdminProjectSummary = {
   name: string;
   ownerId: string;
   ownerEmail: string;
+  canManageMembers: boolean;
 };
 
 export type UserProjectAccess = {
@@ -156,5 +258,9 @@ export type UserProjectAccess = {
 };
 
 export type AdminUserRecord = AppUserProfile & {
+  clientOwnerId: string | null;
+  clientOwnerEmail: string | null;
+  createdByUserId: string | null;
+  createdByEmail: string | null;
   projectAccess: UserProjectAccess[];
 };

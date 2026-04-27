@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/client";
 
-type Mode = "sign_in" | "sign_up";
+type Mode = "sign_in" | "request_reset";
 
 export function AuthForm() {
   const isConfigured = Boolean(
@@ -18,6 +18,7 @@ export function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
+  const passwordUpdated = searchParams.get("passwordUpdated") === "1";
 
   function handleSubmit(formData: FormData) {
     if (!isConfigured) {
@@ -26,27 +27,34 @@ export function AuthForm() {
     }
 
     const email = String(formData.get("email") ?? "");
-    const password = String(formData.get("password") ?? "");
     const supabase = createClient();
 
     setError(null);
     setMessage(null);
 
     startTransition(async () => {
-      const action =
-        mode === "sign_in"
-          ? supabase.auth.signInWithPassword({ email, password })
-          : supabase.auth.signUp({ email, password });
+      if (mode === "request_reset") {
+        const redirectUrl =
+          typeof window !== "undefined" ? `${window.location.origin}/auth/update-password` : undefined;
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectUrl
+        });
 
-      const { error: authError } = await action;
+        if (resetError) {
+          setError(resetError.message);
+          return;
+        }
+
+        setMessage("Password reset email sent. Open the link in that email to set a new password.");
+        return;
+      }
+
+      const password = String(formData.get("password") ?? "");
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (authError) {
         setError(authError.message);
         return;
-      }
-
-      if (mode === "sign_up") {
-        setMessage("Account created. Check your email if email confirmation is enabled in Supabase.");
       }
 
       router.push(redirectTo as Route);
@@ -65,11 +73,11 @@ export function AuthForm() {
           Sign in
         </button>
         <button
-          className={mode === "sign_up" ? "active" : ""}
+          className={mode === "request_reset" ? "active" : ""}
           type="button"
-          onClick={() => setMode("sign_up")}
+          onClick={() => setMode("request_reset")}
         >
-          Create account
+          Reset password
         </button>
       </div>
 
@@ -78,18 +86,23 @@ export function AuthForm() {
           <span>Email</span>
           <input name="email" type="email" placeholder="you@company.com" required />
         </label>
-        <label className="field">
-          <span>Password</span>
-          <input name="password" type="password" placeholder="At least 8 characters" required />
-        </label>
+        {mode === "sign_in" ? (
+          <label className="field">
+            <span>Password</span>
+            <input name="password" type="password" placeholder="At least 8 characters" required />
+          </label>
+        ) : null}
         <button className="primary-button" type="submit" disabled={isPending || !isConfigured}>
-          {isPending ? "Please wait..." : mode === "sign_in" ? "Sign in" : "Create account"}
+          {isPending ? "Please wait..." : mode === "sign_in" ? "Sign in" : "Send reset email"}
         </button>
       </form>
 
       {!isConfigured ? <p className="form-message">Demo mode is active. Configure Supabase to enable login.</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {message ? <p className="form-message">{message}</p> : null}
+      {!message && passwordUpdated ? (
+        <p className="form-message">Password updated successfully. Sign in with your new password.</p>
+      ) : null}
     </div>
   );
 }

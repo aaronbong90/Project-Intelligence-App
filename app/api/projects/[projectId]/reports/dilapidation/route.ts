@@ -44,7 +44,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
           modules: createFullModulePermissions()
         },
         members: [],
+        projectContractors: [],
+        projectConsultants: [],
         milestones: [],
+        contractorSubmissions: [],
+        consultantSubmissions: [],
         surveyItems: (surveyItems ?? []).map((item) => ({
           id: item.id,
           area: item.area,
@@ -58,7 +62,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
         financialRecords: [],
         completionChecklist: [],
         defectZones: [],
-        defects: []
+        defects: [],
+        notifications: []
       };
     }
   }

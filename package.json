@@ -2,10 +2,16 @@
   "name": "project-field-hub-next",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:local": "npx -y node@22 node_modules/next/dist/bin/next dev --hostname 0.0.0.0 --port 3000",
     "build": "next build",
     "start": "next start",
+    "serve:local": "next start --hostname 0.0.0.0 --port 3000",
+    "service:start": "./scripts/run-local-service.sh",
     "lint": "next lint"
   },
   "dependencies": {

@@ -115,7 +115,7 @@ This scaffold is intentionally the clean production starting point. The next imp
 
 ### Phase 2
 
-- invite users by role
+- create users by role with starter passwords
 - per-project access control
 - richer PDF exports
 - project filters and search

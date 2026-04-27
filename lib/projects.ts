@@ -2,7 +2,92 @@ import { createFallbackProfile, createFullModulePermissions, createModulePermiss
 import { demoProject } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/server";
 import { getStoragePublicUrl } from "@/lib/storage";
-import type { AppUserProfile, ProjectBundle } from "@/types/app";
+import type { AppUserProfile, ApprovalStatus, ProjectBundle } from "@/types/app";
+
+function normalizeContractorSubmissionType(
+  value: unknown
+): ProjectBundle["contractorSubmissions"][number]["items"][number]["submissionType"] {
+  if (value === "method_statement" || value === "project_programme" || value === "rfi" || value === "material_submission") {
+    return value;
+  }
+
+  return "material_submission";
+}
+
+function mapContractorSubmissionItems(row: {
+  id: string;
+  items?: unknown;
+  submission_type?: string | null;
+  description?: string | null;
+  quantity?: number | string | null;
+  unit?: string | null;
+}) {
+  const normalizedItems = Array.isArray(row.items)
+    ? row.items.flatMap((entry, index) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        return [
+          {
+            id: typeof item.id === "string" ? item.id : `${row.id}-item-${index + 1}`,
+            submissionType: normalizeContractorSubmissionType(item.submissionType),
+            description: typeof item.description === "string" ? item.description : "",
+            quantity:
+              item.quantity === null || item.quantity === undefined || item.quantity === ""
+                ? null
+                : Number(item.quantity),
+            unit: typeof item.unit === "string" ? item.unit : ""
+          }
+        ];
+      })
+    : [];
+
+  if (normalizedItems.length) {
+    return normalizedItems;
+  }
+
+  return [
+    {
+      id: `${row.id}-item-1`,
+      submissionType: normalizeContractorSubmissionType(row.submission_type),
+      description: row.description ?? "",
+      quantity: row.quantity === null || row.quantity === undefined || row.quantity === "" ? null : Number(row.quantity),
+      unit: row.unit ?? ""
+    }
+  ];
+}
+
+function mapConsultantSubmissionItems(row: {
+  id: string;
+  items?: unknown;
+  document_type?: string | null;
+  description?: string | null;
+}) {
+  const normalizedItems = Array.isArray(row.items)
+    ? row.items.flatMap((entry, index) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        return [
+          {
+            id: typeof item.id === "string" ? item.id : `${row.id}-item-${index + 1}`,
+            documentType: typeof item.documentType === "string" ? item.documentType : "",
+            description: typeof item.description === "string" ? item.description : ""
+          }
+        ];
+      })
+    : [];
+
+  if (normalizedItems.length) {
+    return normalizedItems;
+  }
+
+  return [
+    {
+      id: `${row.id}-item-1`,
+      documentType: row.document_type ?? "",
+      description: row.description ?? ""
+    }
+  ];
+}
 
 function hasSupabaseEnv() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -42,7 +127,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
   }
 
   const membershipSelect =
-    "id, project_id, user_id, email, role, can_overview, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects";
+    "id, project_id, user_id, email, role, can_overview, can_contractor_submissions, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects";
 
   const { data: selfMembershipRows = [] } =
     viewer.role === "master_admin"
@@ -115,7 +200,11 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
   const projectIds = projectRows.map((row) => row.id);
 
   const [
+    { data: projectContractors = [] },
+    { data: projectConsultants = [] },
     { data: milestones = [] },
+    { data: contractorSubmissions = [] },
+    { data: consultantSubmissions = [] },
     { data: surveyItems = [] },
     { data: dailyReports = [] },
     { data: weeklyReports = [] },
@@ -124,9 +213,24 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
     { data: defectZones = [] },
     { data: defects = [] },
     { data: attachments = [] },
+    { data: notifications = [] },
     membershipsResponse
   ] = await Promise.all([
+    supabase.from("project_contractors").select("id, project_id, company_name, contractor_type, trades").in("project_id", projectIds),
+    supabase.from("project_consultants").select("id, project_id, company_name, trades").in("project_id", projectIds),
     supabase.from("milestones").select("id, project_id, title, due_date").in("project_id", projectIds),
+    supabase
+      .from("contractor_submissions")
+      .select(
+        "id, project_id, submission_type, submitted_date, description, quantity, unit, items, owner_user_id, owner_email, owner_role, client_status, client_reviewed_at, client_reviewed_by_user_id, client_reviewed_by_email, client_review_note, consultant_status, consultant_reviewed_at, consultant_reviewed_by_user_id, consultant_reviewed_by_email, consultant_review_note"
+      )
+      .in("project_id", projectIds),
+    supabase
+      .from("consultant_submissions")
+      .select(
+        "id, project_id, submitted_date, document_type, description, items, owner_user_id, owner_email, owner_role, status, reviewed_at, reviewed_by_user_id, reviewed_by_email, review_note"
+      )
+      .in("project_id", projectIds),
     supabase.from("survey_items").select("id, project_id, area, item, status, details").in("project_id", projectIds),
     supabase
       .from("daily_reports")
@@ -149,12 +253,22 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
       .from("attachments")
       .select("id, project_id, section_type, record_id, name, mime_type, storage_path")
       .in("project_id", projectIds),
+    supabase
+      .from("project_notifications")
+      .select("id, project_id, actor_user_id, actor_email, action, section, title, details, created_at")
+      .in("project_id", projectIds)
+      .order("created_at", { ascending: false })
+      .limit(80),
     viewer.role === "master_admin"
       ? supabase.from("project_members").select(membershipSelect).in("project_id", projectIds)
       : Promise.resolve({ data: safeSelfMembershipRows, error: null })
   ]);
 
   const safeMilestones = milestones ?? [];
+  const safeProjectContractors = projectContractors ?? [];
+  const safeProjectConsultants = projectConsultants ?? [];
+  const safeContractorSubmissions = contractorSubmissions ?? [];
+  const safeConsultantSubmissions = consultantSubmissions ?? [];
   const safeSurveyItems = surveyItems ?? [];
   const safeDailyReports = dailyReports ?? [];
   const safeWeeklyReports = weeklyReports ?? [];
@@ -163,6 +277,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
   const safeDefectZones = defectZones ?? [];
   const safeDefects = defects ?? [];
   const safeAttachments = attachments ?? [];
+  const safeNotifications = notifications ?? [];
   const safeMemberships = membershipsResponse.data ?? [];
 
   const attachmentsByRecord = safeAttachments.reduce<Record<string, ProjectBundle["surveyItems"][number]["attachments"]>>(
@@ -195,6 +310,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
       role: normalizeRole(item.role),
       modules: createModulePermissions({
         overview: item.can_overview,
+        contractor_submissions: item.can_contractor_submissions,
         handover: item.can_handover,
         daily_reports: item.can_daily_reports,
         weekly_reports: item.can_weekly_reports,
@@ -215,6 +331,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
         role: normalizeRole(item.role),
         modules: createModulePermissions({
           overview: item.can_overview,
+          contractor_submissions: item.can_contractor_submissions,
           handover: item.can_handover,
           daily_reports: item.can_daily_reports,
           weekly_reports: item.can_weekly_reports,
@@ -253,9 +370,65 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
             modules: selfMembershipByProject[row.id]?.modules ?? createModulePermissions()
           },
     members: membershipsByProject[row.id] ?? [],
+    projectContractors: safeProjectContractors
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        companyName: item.company_name,
+        contractorType: item.contractor_type as ProjectBundle["projectContractors"][number]["contractorType"],
+        trades: Array.isArray(item.trades)
+          ? item.trades.filter((trade): trade is ProjectBundle["projectContractors"][number]["trades"][number] => typeof trade === "string")
+          : []
+      })),
+    projectConsultants: safeProjectConsultants
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        companyName: item.company_name,
+        trades: Array.isArray(item.trades)
+          ? item.trades.filter((trade): trade is ProjectBundle["projectConsultants"][number]["trades"][number] => typeof trade === "string")
+          : []
+      })),
     milestones: safeMilestones
       .filter((item) => item.project_id === row.id)
       .map((item) => ({ id: item.id, title: item.title, dueDate: item.due_date })),
+    contractorSubmissions: safeContractorSubmissions
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        submittedDate: item.submitted_date,
+        items: mapContractorSubmissionItems(item),
+        ownerUserId: item.owner_user_id ?? "",
+        ownerEmail: item.owner_email ?? "",
+        ownerRole: normalizeRole(item.owner_role),
+        clientStatus: (item.client_status ?? "pending") as ApprovalStatus,
+        clientReviewedAt: item.client_reviewed_at ?? null,
+        clientReviewedByUserId: item.client_reviewed_by_user_id ?? null,
+        clientReviewedByEmail: item.client_reviewed_by_email ?? "",
+        clientReviewNote: item.client_review_note ?? "",
+        consultantStatus: (item.consultant_status ?? "pending") as ApprovalStatus,
+        consultantReviewedAt: item.consultant_reviewed_at ?? null,
+        consultantReviewedByUserId: item.consultant_reviewed_by_user_id ?? null,
+        consultantReviewedByEmail: item.consultant_reviewed_by_email ?? "",
+        consultantReviewNote: item.consultant_review_note ?? "",
+        attachments: attachmentsByRecord[`contractor_submission:${item.id}`] ?? []
+      })),
+    consultantSubmissions: safeConsultantSubmissions
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        submittedDate: item.submitted_date,
+        items: mapConsultantSubmissionItems(item),
+        ownerUserId: item.owner_user_id ?? "",
+        ownerEmail: item.owner_email ?? "",
+        ownerRole: normalizeRole(item.owner_role),
+        status: (item.status ?? "pending") as ApprovalStatus,
+        reviewedAt: item.reviewed_at ?? null,
+        reviewedByUserId: item.reviewed_by_user_id ?? null,
+        reviewedByEmail: item.reviewed_by_email ?? "",
+        reviewNote: item.review_note ?? "",
+        attachments: attachmentsByRecord[`consultant_submission:${item.id}`] ?? []
+      })),
     surveyItems: safeSurveyItems
       .filter((item) => item.project_id === row.id)
       .map((item) => ({
@@ -327,6 +500,19 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
         status: item.status as ProjectBundle["defects"][number]["status"],
         details: item.details ?? "",
         attachments: attachmentsByRecord[`defect:${item.id}`] ?? []
+      })),
+    notifications: safeNotifications
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        projectId: item.project_id,
+        actorUserId: item.actor_user_id ?? null,
+        actorEmail: item.actor_email ?? "",
+        action: item.action ?? "updated",
+        section: item.section ?? "Project",
+        title: item.title ?? "Project updated",
+        details: item.details ?? "",
+        createdAt: item.created_at
       }))
   }));
 

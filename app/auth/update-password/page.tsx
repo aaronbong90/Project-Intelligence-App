@@ -1,8 +1,7 @@
-import { Suspense } from "react";
-import { AuthForm } from "@/components/auth-form";
+import { UpdatePasswordForm } from "@/components/update-password-form";
 import { TopNav } from "@/components/top-nav";
 
-export default function AuthPage() {
+export default function UpdatePasswordPage() {
   return (
     <div className="site-shell">
       <TopNav />
@@ -10,12 +9,10 @@ export default function AuthPage() {
         <section className="auth-layout">
           <div className="auth-copy">
             <p className="eyebrow">Secure Access</p>
-            <h2>Sign in to continue.</h2>
-            <p className="muted-copy">Use your assigned email and password.</p>
+            <h2>Set a new password.</h2>
+            <p className="muted-copy">Save your new password to continue.</p>
           </div>
-          <Suspense>
-            <AuthForm />
-          </Suspense>
+          <UpdatePasswordForm />
         </section>
       </main>
     </div>

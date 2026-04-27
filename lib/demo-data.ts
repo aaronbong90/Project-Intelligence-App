@@ -26,6 +26,7 @@ export const demoProject: ProjectBundle = {
       email: "contractor@example.com",
       role: "contractor",
       modules: createModulePermissions({
+        contractor_submissions: true,
         financials: true,
         daily_reports: true,
         weekly_reports: true,
@@ -39,6 +40,7 @@ export const demoProject: ProjectBundle = {
       email: "subcontractor@example.com",
       role: "subcontractor",
       modules: createModulePermissions({
+        contractor_submissions: true,
         financials: true,
         daily_reports: true,
         weekly_reports: true
@@ -51,6 +53,7 @@ export const demoProject: ProjectBundle = {
       role: "consultant",
       modules: createModulePermissions({
         overview: true,
+        contractor_submissions: true,
         handover: true,
         financials: true,
         defects: true
@@ -63,16 +66,166 @@ export const demoProject: ProjectBundle = {
       role: "client",
       modules: createModulePermissions({
         overview: true,
+        contractor_submissions: true,
         financials: true,
         completion: true,
         defects: true
       })
     }
   ],
+  projectContractors: [
+    {
+      id: "pc-1",
+      companyName: "Northfield Projects",
+      contractorType: "main_contractor",
+      trades: ["architectural", "electrical_low_voltage"]
+    },
+    {
+      id: "pc-2",
+      companyName: "HydroFlow Systems",
+      contractorType: "subcontractor",
+      trades: ["plumbing_sanitary", "fire_protection"]
+    },
+    {
+      id: "pc-3",
+      companyName: "Voltline Engineering",
+      contractorType: "subcontractor",
+      trades: ["electrical"]
+    }
+  ],
+  projectConsultants: [
+    {
+      id: "psc-1",
+      companyName: "Studio Form Architects",
+      trades: ["architect"]
+    },
+    {
+      id: "psc-2",
+      companyName: "Axis Building Services",
+      trades: ["mep"]
+    }
+  ],
   milestones: [
     { id: "m1", title: "Site handover", dueDate: "2026-04-14" },
     { id: "m2", title: "Authority submission", dueDate: "2026-04-22" },
     { id: "m3", title: "Practical completion", dueDate: "2026-06-12" }
+  ],
+  contractorSubmissions: [
+    {
+      id: "cs1",
+      submittedDate: "2026-04-13",
+      items: [
+        {
+          id: "cs1-item-1",
+          submissionType: "material_submission",
+          description: "Floor tile sample board for client review.",
+          quantity: 12,
+          unit: "pcs"
+        },
+        {
+          id: "cs1-item-2",
+          submissionType: "material_submission",
+          description: "Technical data sheet and product brochure for the selected tile range.",
+          quantity: 1,
+          unit: "set"
+        }
+      ],
+      ownerUserId: "user-contractor",
+      ownerEmail: "contractor@example.com",
+      ownerRole: "contractor",
+      clientStatus: "approved",
+      clientReviewedAt: "2026-04-14T10:30:00+08:00",
+      clientReviewedByUserId: "user-client",
+      clientReviewedByEmail: "client@example.com",
+      clientReviewNote: "Material sample and technical sheet are acceptable for the next coordination stage.",
+      consultantStatus: "pending",
+      consultantReviewedAt: null,
+      consultantReviewedByUserId: null,
+      consultantReviewedByEmail: "",
+      consultantReviewNote: "",
+      attachments: []
+    },
+    {
+      id: "cs2",
+      submittedDate: "2026-04-15",
+      items: [
+        {
+          id: "cs2-item-1",
+          submissionType: "rfi",
+          description: "Clarification requested for ceiling bulkhead height above the service counter.",
+          quantity: null,
+          unit: ""
+        },
+        {
+          id: "cs2-item-2",
+          submissionType: "method_statement",
+          description: "Proposed access sequence for ceiling opening and reinstatement around the counter area.",
+          quantity: 1,
+          unit: "statement"
+        }
+      ],
+      ownerUserId: "user-subcontractor",
+      ownerEmail: "subcontractor@example.com",
+      ownerRole: "subcontractor",
+      clientStatus: "pending",
+      clientReviewedAt: null,
+      clientReviewedByUserId: null,
+      clientReviewedByEmail: "",
+      clientReviewNote: "",
+      consultantStatus: "rejected",
+      consultantReviewedAt: "2026-04-16T16:10:00+08:00",
+      consultantReviewedByUserId: "user-consultant",
+      consultantReviewedByEmail: "consultant@example.com",
+      consultantReviewNote: "Please attach the reflected ceiling detail and confirm the intended clear height at the service counter.",
+      attachments: []
+    }
+  ],
+  consultantSubmissions: [
+    {
+      id: "cts1",
+      submittedDate: "2026-04-16",
+      items: [
+        {
+          id: "cts1-item-1",
+          documentType: "Architectural sketch revision",
+          description: "Updated reflected ceiling sketch issued for coordination with the service counter bulkhead."
+        },
+        {
+          id: "cts1-item-2",
+          documentType: "Architectural detail",
+          description: "Follow-up joinery interface detail for the ceiling bulkhead return."
+        }
+      ],
+      ownerUserId: "user-consultant",
+      ownerEmail: "consultant@example.com",
+      ownerRole: "consultant",
+      status: "pending",
+      reviewedAt: null,
+      reviewedByUserId: null,
+      reviewedByEmail: "",
+      reviewNote: "",
+      attachments: []
+    },
+    {
+      id: "cts2",
+      submittedDate: "2026-04-12",
+      items: [
+        {
+          id: "cts2-item-1",
+          documentType: "MEP coordination note",
+          description: "Consultant coordination note confirming revised route for condensate drain and low-voltage tray separation."
+        }
+      ],
+      ownerUserId: "user-consultant",
+      ownerEmail: "consultant@example.com",
+      ownerRole: "consultant",
+      status: "approved",
+      reviewedAt: "2026-04-13T14:40:00+08:00",
+      reviewedByUserId: "user-client",
+      reviewedByEmail: "client@example.com",
+      reviewNote: "Accepted and filed for the next site coordination meeting.",
+      attachments: []
+    }
   ],
   surveyItems: [
     {
@@ -168,6 +321,30 @@ export const demoProject: ProjectBundle = {
       details: "Observed during internal pre-handover inspection. Requires reseal.",
       attachments: []
     }
+  ],
+  notifications: [
+    {
+      id: "notice-1",
+      projectId: "demo-project",
+      actorUserId: "user-consultant",
+      actorEmail: "consultant@example.com",
+      action: "updated",
+      section: "Contractor Submission",
+      title: "Consultant review marked as returned",
+      details: "Please attach the reflected ceiling detail and confirm the intended clear height.",
+      createdAt: "2026-04-16T16:10:00+08:00"
+    },
+    {
+      id: "notice-2",
+      projectId: "demo-project",
+      actorUserId: "user-subcontractor",
+      actorEmail: "subcontractor@example.com",
+      action: "created",
+      section: "Financials",
+      title: "Variation order VO-002 submitted",
+      details: "Additional power point and cable tray coordination.",
+      createdAt: "2026-04-17T17:20:00+08:00"
+    }
   ]
 };
 
@@ -176,7 +353,8 @@ export const demoAdminProjects: AdminProjectSummary[] = [
     id: demoProject.overview.id,
     name: demoProject.overview.name,
     ownerId: "user-master-admin",
-    ownerEmail: "aaronbong90@gmail.com"
+    ownerEmail: "aaronbong90@gmail.com",
+    canManageMembers: true
   }
 ];
 
@@ -186,6 +364,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "aaronbong90@gmail.com",
     role: "master_admin",
     isSuspended: false,
+    clientOwnerId: null,
+    clientOwnerEmail: null,
+    createdByUserId: null,
+    createdByEmail: null,
     projectAccess: [
       {
         membershipId: null,
@@ -202,6 +384,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "client@example.com",
     role: "client",
     isSuspended: false,
+    clientOwnerId: "user-client",
+    clientOwnerEmail: "client@example.com",
+    createdByUserId: "user-master-admin",
+    createdByEmail: "aaronbong90@gmail.com",
     projectAccess: [
       {
         membershipId: "pm-4",
@@ -210,6 +396,7 @@ export const demoAdminUsers: AdminUserRecord[] = [
         role: "client",
         modules: createModulePermissions({
           overview: true,
+          contractor_submissions: true,
           financials: true,
           completion: true,
           defects: true
@@ -223,6 +410,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "contractor@example.com",
     role: "contractor",
     isSuspended: false,
+    clientOwnerId: "user-client",
+    clientOwnerEmail: "client@example.com",
+    createdByUserId: "user-master-admin",
+    createdByEmail: "aaronbong90@gmail.com",
     projectAccess: [
       {
         membershipId: "pm-1",
@@ -230,6 +421,7 @@ export const demoAdminUsers: AdminUserRecord[] = [
         projectName: demoProject.overview.name,
         role: "contractor",
         modules: createModulePermissions({
+          contractor_submissions: true,
           financials: true,
           daily_reports: true,
           weekly_reports: true,
@@ -245,6 +437,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "subcontractor@example.com",
     role: "subcontractor",
     isSuspended: false,
+    clientOwnerId: "user-client",
+    clientOwnerEmail: "client@example.com",
+    createdByUserId: "user-master-admin",
+    createdByEmail: "aaronbong90@gmail.com",
     projectAccess: [
       {
         membershipId: "pm-3",
@@ -252,6 +448,7 @@ export const demoAdminUsers: AdminUserRecord[] = [
         projectName: demoProject.overview.name,
         role: "subcontractor",
         modules: createModulePermissions({
+          contractor_submissions: true,
           financials: true,
           daily_reports: true,
           weekly_reports: true
@@ -265,6 +462,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "consultant@example.com",
     role: "consultant",
     isSuspended: false,
+    clientOwnerId: "user-client",
+    clientOwnerEmail: "client@example.com",
+    createdByUserId: "user-master-admin",
+    createdByEmail: "aaronbong90@gmail.com",
     projectAccess: [
       {
         membershipId: "pm-2",
@@ -273,6 +474,7 @@ export const demoAdminUsers: AdminUserRecord[] = [
         role: "consultant",
         modules: createModulePermissions({
           overview: true,
+          contractor_submissions: true,
           handover: true,
           financials: true,
           defects: true
@@ -286,6 +488,10 @@ export const demoAdminUsers: AdminUserRecord[] = [
     email: "suspended.consultant@example.com",
     role: "consultant",
     isSuspended: true,
+    clientOwnerId: "user-client",
+    clientOwnerEmail: "client@example.com",
+    createdByUserId: "user-master-admin",
+    createdByEmail: "aaronbong90@gmail.com",
     projectAccess: []
   }
 ];

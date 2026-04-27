@@ -7,6 +7,18 @@ type CookieToSet = {
   options?: Record<string, unknown>;
 };
 
+function clearSupabaseCookies(response: NextResponse, cookieNames: string[]) {
+  cookieNames
+    .filter((name) => name.startsWith("sb-"))
+    .forEach((name) => {
+      response.cookies.set(name, "", {
+        expires: new Date(0),
+        maxAge: 0,
+        path: "/"
+      });
+    });
+}
+
 export async function middleware(request: NextRequest) {
   const hasSupabaseEnv = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -38,12 +50,20 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
+  let session = null;
+  try {
+    const sessionResponse = await supabase.auth.getSession();
+    session = sessionResponse.data.session;
+  } catch {
+    clearSupabaseCookies(
+      response,
+      request.cookies.getAll().map((cookie) => cookie.name)
+    );
+  }
 
   const pathname = request.nextUrl.pathname;
-  const needsAuth = pathname.startsWith("/dashboard");
+  const isAuthRoot = pathname === "/auth";
+  const needsAuth = pathname.startsWith("/dashboard") || pathname.startsWith("/admin") || pathname.startsWith("/settings");
 
   if (needsAuth && !session) {
     const redirectUrl = request.nextUrl.clone();
@@ -52,7 +72,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (pathname === "/auth" && session) {
+  if (isAuthRoot && session) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/dashboard";
     return NextResponse.redirect(redirectUrl);
@@ -62,5 +82,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/auth", "/dashboard/:path*"]
+  matcher: ["/auth/:path*", "/dashboard/:path*", "/admin/:path*", "/settings/:path*"]
 };

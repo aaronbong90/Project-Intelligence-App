@@ -8,18 +8,14 @@ export default function HomePage() {
       <main className="landing-shell">
         <section className="landing-hero">
           <div className="landing-copy">
-            <p className="eyebrow">Mobile-Ready Construction Operations</p>
-            <h2>Run handovers, daily reports, weekly reports, finance, and defects from one shared app.</h2>
-            <p className="muted-copy">
-              This production scaffold uses Next.js for the frontend, Supabase for login and cloud sync, and a PDF route
-              for branded survey exports.
-            </p>
+            <p className="eyebrow">Project Workspace</p>
+            <h2>Keep project records, reports, finance, and defects in one place.</h2>
             <div className="landing-actions">
               <Link className="primary-button" href="/dashboard">
                 Open dashboard
               </Link>
-              <Link className="secondary-button" href="/auth">
-                Configure login
+              <Link className="secondary-button" href="/guide">
+                Help and FAQ
               </Link>
             </div>
           </div>
