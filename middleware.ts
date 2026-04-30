@@ -78,6 +78,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  if (isAuthRoot && !session && !request.nextUrl.searchParams.get("redirectTo")) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/";
+    return NextResponse.redirect(redirectUrl);
+  }
+
   return response;
 }
 
