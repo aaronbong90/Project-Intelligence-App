@@ -1593,6 +1593,58 @@ p {
   padding: 5px 9px;
 }
 
+.overview-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.overview-edit-icon-button,
+.overview-delete-icon-button {
+  display: inline-flex;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-strong));
+  color: var(--danger);
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.overview-edit-icon-button {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface-strong));
+  color: var(--brand);
+  font-size: 0.74rem;
+}
+
+.overview-edit-icon-button:hover {
+  border-color: color-mix(in srgb, var(--brand) 68%, var(--line));
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface-strong));
+  color: var(--brand-strong);
+}
+
+.overview-delete-icon-button:hover {
+  border-color: color-mix(in srgb, var(--danger) 68%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
+  color: #ff8a91;
+}
+
+.overview-action-short {
+  display: none;
+}
+
+.overview-role-short {
+  display: none;
+}
+
 .overview-create-switcher {
   display: flex;
   flex-wrap: wrap;
@@ -3696,25 +3748,42 @@ p {
   }
 
   .photo-gallery-backdrop {
-    padding: 12px;
+    place-items: start center;
+    overflow: auto;
+    padding: 10px 10px calc(82px + env(safe-area-inset-bottom));
   }
 
   .photo-gallery-modal {
-    max-height: 88vh;
+    width: 100%;
+    max-height: calc(100dvh - 104px);
   }
 
   .photo-gallery-header {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    padding: 10px;
   }
 
   .photo-gallery-grid {
-    grid-template-columns: 1fr;
-    padding: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
   }
 
   .photo-gallery-item img {
-    height: min(58vh, 360px);
+    height: clamp(96px, 27vw, 140px);
+    padding: 4px;
+  }
+
+  .photo-gallery-item figcaption {
+    font-size: 0.68rem;
+  }
+
+  .photo-gallery-header .secondary-button {
+    width: auto;
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
   }
 
   .top-nav-links a,
@@ -4527,29 +4596,53 @@ p {
     display: none;
   }
 
+  .dashboard-module-card .submission-table .mobile-table-secondary {
+    display: none;
+  }
+
   .dashboard-module-card .contractor-documents-table .submission-date-column {
-    width: 15%;
+    width: 18%;
   }
 
   .dashboard-module-card .contractor-documents-table .submission-main-column {
-    width: 29%;
+    width: 32%;
   }
 
   .dashboard-module-card .contractor-documents-table .submission-count-column {
-    width: 7%;
+    width: 8%;
     text-align: center;
   }
 
   .dashboard-module-card .contractor-documents-table .submission-owner-column {
-    width: 21%;
+    width: 0;
   }
 
   .dashboard-module-card .contractor-documents-table .submission-review-column {
-    width: 15%;
+    width: 18%;
   }
 
   .dashboard-module-card .contractor-documents-table .submission-actions-column {
-    width: 13%;
+    width: 24%;
+  }
+
+  .dashboard-module-card .contractor-documents-table .submission-table-actions {
+    display: grid;
+    justify-items: stretch;
+    gap: 5px;
+  }
+
+  .dashboard-module-card .contractor-documents-table .submission-actions-column .secondary-button {
+    min-height: 28px;
+    padding: 5px 7px;
+    font-size: 0.62rem;
+  }
+
+  .dashboard-module-card .contractor-documents-table .status-pill {
+    max-width: 100%;
+    justify-content: center;
+    padding-inline: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .dashboard-module-card .submission-inline-detail {
@@ -4747,6 +4840,24 @@ p {
     width: 20%;
   }
 
+  .dashboard-module-card#overview .submission-table.overview-team-table .overview-company-column {
+    width: 30%;
+  }
+
+  .dashboard-module-card#overview .submission-table.overview-team-table .overview-role-column {
+    width: 12%;
+    white-space: nowrap;
+  }
+
+  .dashboard-module-card#overview .submission-table.overview-team-table .overview-trades-column {
+    width: 36%;
+  }
+
+  .dashboard-module-card#overview .submission-table.overview-team-table .overview-action-column {
+    width: 22%;
+    text-align: center;
+  }
+
   .dashboard-module-card#overview .submission-table.overview-compact-table th,
   .dashboard-module-card#overview .submission-table.overview-compact-table td {
     padding: 7px 8px;
@@ -4766,6 +4877,50 @@ p {
     min-height: 28px;
     padding: 5px 8px;
     font-size: 0.68rem;
+  }
+
+  .dashboard-module-card#overview .overview-row-actions {
+    gap: 3px;
+  }
+
+  .dashboard-module-card#overview .overview-action-full {
+    display: none;
+  }
+
+  .dashboard-module-card#overview .overview-action-short {
+    display: inline;
+  }
+
+  .dashboard-module-card#overview .overview-edit-icon-button,
+  .dashboard-module-card#overview .overview-delete-icon-button {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+    border-radius: 8px;
+    font-size: 0.72rem;
+  }
+
+  .dashboard-module-card#overview .overview-edit-icon-button {
+    border-color: color-mix(in srgb, var(--brand) 58%, var(--line));
+    background: color-mix(in srgb, var(--brand) 12%, var(--surface-strong));
+    color: var(--brand);
+  }
+
+  .dashboard-module-card#overview .overview-delete-icon-button {
+    border-color: color-mix(in srgb, var(--danger) 58%, var(--line));
+    background: color-mix(in srgb, var(--danger) 14%, var(--surface-strong));
+    color: #ff5a64;
+  }
+
+  .dashboard-module-card#overview .overview-role-full {
+    display: none;
+  }
+
+  .dashboard-module-card#overview .overview-role-short {
+    display: inline;
+    font-weight: 800;
   }
 
   .dashboard-module-card#overview .overview-create-switcher {

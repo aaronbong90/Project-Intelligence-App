@@ -807,6 +807,10 @@ function formatContractorTypeLabel(value: ContractorPartyType) {
   return CONTRACTOR_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? "Contractor";
 }
 
+function formatContractorTypeShortLabel(value: ContractorPartyType) {
+  return value === "main_contractor" ? "Main" : "Sub";
+}
+
 function formatContractorTradeLabel(value: ContractorTrade) {
   return CONTRACTOR_TRADE_OPTIONS.find((option) => option.value === value)?.label ?? formatSectionLabel(value);
 }
@@ -1584,17 +1588,19 @@ function CreateToggleButton({
 function CreatePanel({
   title,
   meta,
+  eyebrow = "Create",
   children
 }: {
   title: string;
   meta?: ReactNode;
+  eyebrow?: string;
   children: ReactNode;
 }) {
   return (
     <div className="panel-surface module-create-panel top-gap">
       <div className="module-create-panel-header">
         <div>
-          <p className="eyebrow">Create</p>
+          <p className="eyebrow">{eyebrow}</p>
           <h4>{title}</h4>
         </div>
         {meta ? <div className="disclosure-meta">{meta}</div> : null}
@@ -1900,6 +1906,11 @@ type Props = {
 };
 
 type DashboardPanelKey = ModuleKey | "drawing_register" | "ai_insights" | "access_control";
+type OverviewEditTarget =
+  | { kind: "contractor"; id: string }
+  | { kind: "consultant"; id: string }
+  | { kind: "milestone"; id: string }
+  | null;
 
 export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, viewer }: Props) {
   const [projects, setProjects] = useState<ProjectBundle[]>(initialProjects);
@@ -1913,6 +1924,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   const [selectedDailyReportId, setSelectedDailyReportId] = useState<string | null>(null);
   const [editingDailyReportId, setEditingDailyReportId] = useState<string | null>(null);
   const [openCreatePanelKey, setOpenCreatePanelKey] = useState<string | null>(null);
+  const [overviewEditTarget, setOverviewEditTarget] = useState<OverviewEditTarget>(null);
   const [isMobileModuleListOpen, setIsMobileModuleListOpen] = useState(false);
   const [isMobileCreateMenuOpen, setIsMobileCreateMenuOpen] = useState(false);
   const [openAiAssistantKey, setOpenAiAssistantKey] = useState<DashboardPanelKey | null>(null);
@@ -2005,6 +2017,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   const toggleCreatePanel = (key: string) => {
     setOpenAiAssistantKey(null);
     setOpenFilterPanelKey(null);
+    setOverviewEditTarget(null);
     setOpenCreatePanelKey((current) => (current === key ? null : key));
   };
 
@@ -2017,6 +2030,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setModuleAiLoadingKey(null);
     setIsContractorDocumentExportMode(false);
     setSelectedContractorDocumentIds([]);
+    setOverviewEditTarget(null);
   }, [activePanelKey, activeProjectId]);
 
   const isSuspended = viewer?.isSuspended ?? false;
@@ -2508,6 +2522,18 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   const activeExportModuleKey =
     activePanel && MODULE_KEYS.includes(activePanel.key as ModuleKey) ? (activePanel.key as ModuleKey) : null;
   const isOverviewCreatePanelOpen = Boolean(openCreatePanelKey?.startsWith("overview-"));
+  const overviewEditingContractor =
+    overviewEditTarget?.kind === "contractor"
+      ? activeProject.projectContractors.find((contractor) => contractor.id === overviewEditTarget.id) ?? null
+      : null;
+  const overviewEditingConsultant =
+    overviewEditTarget?.kind === "consultant"
+      ? activeProject.projectConsultants.find((consultant) => consultant.id === overviewEditTarget.id) ?? null
+      : null;
+  const overviewEditingMilestone =
+    overviewEditTarget?.kind === "milestone"
+      ? activeProject.milestones.find((milestone) => milestone.id === overviewEditTarget.id) ?? null
+      : null;
   const mobileCreateActions = [
     ...(activePanelKey === "overview" && canManageOverviewTeams
       ? [
@@ -2675,6 +2701,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   function handleMobileCreateActionSelect(key: string) {
     setOpenAiAssistantKey(null);
     setOpenFilterPanelKey(null);
+    setOverviewEditTarget(null);
     setOpenCreatePanelKey(key);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2682,6 +2709,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
   function toggleModuleAiAssistant(key: DashboardPanelKey) {
     setOpenCreatePanelKey(null);
+    setOverviewEditTarget(null);
     setOpenFilterPanelKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2690,6 +2718,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
   function toggleModuleFilter(key: DashboardPanelKey) {
     setOpenCreatePanelKey(null);
+    setOverviewEditTarget(null);
     setOpenAiAssistantKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2701,7 +2730,17 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setOpenFilterPanelKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
+    setOverviewEditTarget(null);
     setOpenCreatePanelKey((current) => (current?.startsWith("overview-") ? null : "overview-details"));
+  }
+
+  function openOverviewEditPanel(target: Exclude<OverviewEditTarget, null>) {
+    setOpenAiAssistantKey(null);
+    setOpenFilterPanelKey(null);
+    setIsMobileCreateMenuOpen(false);
+    setIsMobileModuleListOpen(false);
+    setOverviewEditTarget(target);
+    setOpenCreatePanelKey(`overview-${target.kind}`);
   }
 
   async function handleModuleAiAssistantSubmit(event: FormEvent<HTMLFormElement>, moduleName: string, key: DashboardPanelKey) {
@@ -4334,6 +4373,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
       buildPayload: (formData: FormData) => Promise<Record<string, unknown>> | Record<string, unknown>;
       select: string;
       update: (project: ProjectBundle, data: Record<string, unknown>, attachments: AttachmentRecord[]) => ProjectBundle;
+      afterSuccess?: () => void;
     }
   ) {
     event.preventDefault();
@@ -4348,6 +4388,9 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
       try {
         const files = options.section ? await prepareFreePilotFiles(rawFiles, getUploadModeForSection(options.section)) : [];
         await requireConfiguredAndUser();
+        if (OVERVIEW_MANAGED_TABLES.has(options.table) && !canManageOverviewTeams) {
+          throw new Error("You do not have permission to update overview details.");
+        }
         const supabase = getConfiguredClient();
         const payload = await options.buildPayload(formData);
 
@@ -4380,18 +4423,150 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
           details: attachments.length ? `${attachments.length} attachment${attachments.length === 1 ? "" : "s"} added.` : ""
         });
         setFeedback(options.label ?? (options.section ? `${formatSectionLabel(options.section)} updated.` : "Record updated."));
+        options.afterSuccess?.();
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to update record.");
       }
     });
   }
 
+  function buildOverviewContractorPayload(formData: FormData) {
+    const trades = readSelectedContractorTrades(formData);
+    if (!trades.length) {
+      throw new Error("Select at least one trade for the contractor entry.");
+    }
+
+    return {
+      company_name: String(formData.get("companyName") ?? "").trim(),
+      contractor_type: String(formData.get("contractorType") ?? "main_contractor") as ContractorPartyType,
+      trades
+    };
+  }
+
+  function handleOverviewContractorSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+    contractor: ProjectBundle["projectContractors"][number] | null
+  ) {
+    if (contractor) {
+      handleRecordUpdate(event, {
+        table: "project_contractors",
+        recordId: contractor.id,
+        label: "Contractor information updated.",
+        buildPayload: buildOverviewContractorPayload,
+        select: "id, company_name, contractor_type, trades",
+        update: (project, data) => ({
+          ...project,
+          projectContractors: sortProjectContractors(
+            project.projectContractors.map((item) => (item.id === contractor.id ? buildProjectContractorFromRow(data) : item))
+          )
+        }),
+        afterSuccess: () => setOverviewEditTarget(null)
+      });
+      return;
+    }
+
+    handleRecordCreate(event, {
+      table: "project_contractors",
+      label: "Contractor information saved.",
+      buildPayload: buildOverviewContractorPayload,
+      select: "id, company_name, contractor_type, trades",
+      append: (project, data) => ({
+        ...project,
+        projectContractors: sortProjectContractors([...project.projectContractors, buildProjectContractorFromRow(data)])
+      })
+    });
+  }
+
+  function buildOverviewConsultantPayload(formData: FormData) {
+    const trades = readSelectedConsultantTrades(formData);
+    if (!trades.length) {
+      throw new Error("Select at least one trade for the consultant entry.");
+    }
+
+    return {
+      company_name: String(formData.get("companyName") ?? "").trim(),
+      trades
+    };
+  }
+
+  function handleOverviewConsultantSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+    consultant: ProjectBundle["projectConsultants"][number] | null
+  ) {
+    if (consultant) {
+      handleRecordUpdate(event, {
+        table: "project_consultants",
+        recordId: consultant.id,
+        label: "Consultant details updated.",
+        buildPayload: buildOverviewConsultantPayload,
+        select: "id, company_name, trades",
+        update: (project, data) => ({
+          ...project,
+          projectConsultants: sortProjectConsultants(
+            project.projectConsultants.map((item) => (item.id === consultant.id ? buildProjectConsultantFromRow(data) : item))
+          )
+        }),
+        afterSuccess: () => setOverviewEditTarget(null)
+      });
+      return;
+    }
+
+    handleRecordCreate(event, {
+      table: "project_consultants",
+      label: "Consultant details saved.",
+      buildPayload: buildOverviewConsultantPayload,
+      select: "id, company_name, trades",
+      append: (project, data) => ({
+        ...project,
+        projectConsultants: sortProjectConsultants([...project.projectConsultants, buildProjectConsultantFromRow(data)])
+      })
+    });
+  }
+
+  function handleOverviewMilestoneSubmit(event: React.FormEvent<HTMLFormElement>, milestone: ProjectBundle["milestones"][number] | null) {
+    if (milestone) {
+      handleRecordUpdate(event, {
+        table: "milestones",
+        recordId: milestone.id,
+        label: "Milestone updated.",
+        buildPayload: (formData) => ({
+          title: String(formData.get("title") ?? "").trim(),
+          due_date: String(formData.get("dueDate") ?? "")
+        }),
+        select: "id, title, due_date",
+        update: (project, data) => ({
+          ...project,
+          milestones: project.milestones
+            .map((item) =>
+              item.id === milestone.id
+                ? { id: String(data.id), title: String(data.title), dueDate: String(data.due_date) }
+                : item
+            )
+            .sort((left, right) => left.dueDate.localeCompare(right.dueDate))
+        }),
+        afterSuccess: () => setOverviewEditTarget(null)
+      });
+      return;
+    }
+
+    handleMilestoneCreate(event);
+  }
+
   function handleDelete(options: {
     table: string;
     recordId: string;
     section?: RecordSectionType;
+    confirmMessage?: string;
     remove: (project: ProjectBundle) => ProjectBundle;
   }) {
+    if (typeof window !== "undefined") {
+      const isConfirmed = window.confirm(options.confirmMessage ?? "Delete this record? This cannot be undone.");
+
+      if (!isConfirmed) {
+        return;
+      }
+    }
+
     resetMessages();
     startTransition(async () => {
       try {
@@ -6396,23 +6571,26 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
               </div>
               {activeProject.projectContractors.length || activeProject.projectConsultants.length ? (
                 <div className="submission-table-wrap overview-table-wrap">
-                  <table className="submission-table overview-compact-table">
+                  <table className="submission-table overview-compact-table overview-team-table">
                     <thead>
                       <tr>
-                        <th>Company</th>
-                        <th>Role</th>
-                        <th>Trades</th>
-                        {canManageOverviewTeams ? <th>Action</th> : null}
+                        <th className="overview-company-column">Company</th>
+                        <th className="overview-role-column">Role</th>
+                        <th className="overview-trades-column">Trades</th>
+                        {canManageOverviewTeams ? <th className="overview-action-column">Action</th> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {sortProjectContractors(activeProject.projectContractors).map((contractor) => (
                         <tr key={contractor.id}>
-                          <td className="submission-table-main-cell">
+                          <td className="submission-table-main-cell overview-company-column">
                             <strong>{contractor.companyName}</strong>
                           </td>
-                          <td>{formatContractorTypeLabel(contractor.contractorType)}</td>
-                          <td>
+                          <td className="overview-role-column">
+                            <span className="overview-role-full">{formatContractorTypeLabel(contractor.contractorType)}</span>
+                            <span className="overview-role-short">{formatContractorTypeShortLabel(contractor.contractorType)}</span>
+                          </td>
+                          <td className="overview-trades-column">
                             <div className="overview-table-pills">
                               {contractor.trades.map((trade) => (
                                 <span className="pill" key={trade}>
@@ -6422,34 +6600,52 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                             </div>
                           </td>
                           {canManageOverviewTeams ? (
-                            <td>
-                              <button
-                                className="ghost-button overview-table-action"
-                                onClick={() =>
-                                  handleDelete({
-                                    table: "project_contractors",
-                                    recordId: contractor.id,
-                                    remove: (project) => ({
-                                      ...project,
-                                      projectContractors: project.projectContractors.filter((item) => item.id !== contractor.id)
+                            <td className="overview-action-column">
+                              <div className="overview-row-actions">
+                                <button
+                                  aria-label={`Edit ${contractor.companyName}`}
+                                  className="ghost-button overview-table-action overview-edit-icon-button"
+                                  onClick={() => openOverviewEditPanel({ kind: "contractor", id: contractor.id })}
+                                  title="Edit"
+                                  type="button"
+                                >
+                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
+                                  <span className="overview-action-short" aria-hidden="true">E</span>
+                                </button>
+                                <button
+                                  aria-label={`Delete ${contractor.companyName}`}
+                                  className="ghost-button overview-table-action overview-delete-icon-button"
+                                  onClick={() =>
+                                    handleDelete({
+                                      table: "project_contractors",
+                                      recordId: contractor.id,
+                                      confirmMessage: `Delete ${contractor.companyName}? This will remove this team record from the project.`,
+                                      remove: (project) => ({
+                                        ...project,
+                                        projectContractors: project.projectContractors.filter((item) => item.id !== contractor.id)
+                                      })
                                     })
-                                  })
-                                }
-                                type="button"
-                              >
-                                Delete
-                              </button>
+                                  }
+                                  title="Delete"
+                                  type="button"
+                                >
+                                  <span aria-hidden="true">X</span>
+                                </button>
+                              </div>
                             </td>
                           ) : null}
                         </tr>
                       ))}
                       {sortProjectConsultants(activeProject.projectConsultants).map((consultant) => (
                         <tr key={consultant.id}>
-                          <td className="submission-table-main-cell">
+                          <td className="submission-table-main-cell overview-company-column">
                             <strong>{consultant.companyName}</strong>
                           </td>
-                          <td>Consultant</td>
-                          <td>
+                          <td className="overview-role-column">
+                            <span className="overview-role-full">Consultant</span>
+                            <span className="overview-role-short">Consult</span>
+                          </td>
+                          <td className="overview-trades-column">
                             <div className="overview-table-pills">
                               {consultant.trades.map((trade) => (
                                 <span className="pill" key={trade}>
@@ -6459,23 +6655,38 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                             </div>
                           </td>
                           {canManageOverviewTeams ? (
-                            <td>
-                              <button
-                                className="ghost-button overview-table-action"
-                                onClick={() =>
-                                  handleDelete({
-                                    table: "project_consultants",
-                                    recordId: consultant.id,
-                                    remove: (project) => ({
-                                      ...project,
-                                      projectConsultants: project.projectConsultants.filter((item) => item.id !== consultant.id)
+                            <td className="overview-action-column">
+                              <div className="overview-row-actions">
+                                <button
+                                  aria-label={`Edit ${consultant.companyName}`}
+                                  className="ghost-button overview-table-action overview-edit-icon-button"
+                                  onClick={() => openOverviewEditPanel({ kind: "consultant", id: consultant.id })}
+                                  title="Edit"
+                                  type="button"
+                                >
+                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
+                                  <span className="overview-action-short" aria-hidden="true">E</span>
+                                </button>
+                                <button
+                                  aria-label={`Delete ${consultant.companyName}`}
+                                  className="ghost-button overview-table-action overview-delete-icon-button"
+                                  onClick={() =>
+                                    handleDelete({
+                                      table: "project_consultants",
+                                      recordId: consultant.id,
+                                      confirmMessage: `Delete ${consultant.companyName}? This will remove this consultant record from the project.`,
+                                      remove: (project) => ({
+                                        ...project,
+                                        projectConsultants: project.projectConsultants.filter((item) => item.id !== consultant.id)
+                                      })
                                     })
-                                  })
-                                }
-                                type="button"
-                              >
-                                Delete
-                              </button>
+                                  }
+                                  title="Delete"
+                                  type="button"
+                                >
+                                  <span aria-hidden="true">X</span>
+                                </button>
+                              </div>
                             </td>
                           ) : null}
                         </tr>
@@ -6512,22 +6723,37 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                           <td>{formatDate(milestone.dueDate)}</td>
                           {canManageOverviewTeams ? (
                             <td>
-                              <button
-                                className="ghost-button overview-table-action"
-                                onClick={() =>
-                                  handleDelete({
-                                    table: "milestones",
-                                    recordId: milestone.id,
-                                    remove: (project) => ({
-                                      ...project,
-                                      milestones: project.milestones.filter((item) => item.id !== milestone.id)
+                              <div className="overview-row-actions">
+                                <button
+                                  aria-label={`Edit ${milestone.title}`}
+                                  className="ghost-button overview-table-action overview-edit-icon-button"
+                                  onClick={() => openOverviewEditPanel({ kind: "milestone", id: milestone.id })}
+                                  title="Edit"
+                                  type="button"
+                                >
+                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
+                                  <span className="overview-action-short" aria-hidden="true">E</span>
+                                </button>
+                                <button
+                                  aria-label={`Delete ${milestone.title}`}
+                                  className="ghost-button overview-table-action overview-delete-icon-button"
+                                  onClick={() =>
+                                    handleDelete({
+                                      table: "milestones",
+                                      recordId: milestone.id,
+                                      confirmMessage: `Delete ${milestone.title}? This will remove this milestone from the project.`,
+                                      remove: (project) => ({
+                                        ...project,
+                                        milestones: project.milestones.filter((item) => item.id !== milestone.id)
+                                      })
                                     })
-                                  })
-                                }
-                                type="button"
-                              >
-                                Delete
-                              </button>
+                                  }
+                                  title="Delete"
+                                  type="button"
+                                >
+                                  <span aria-hidden="true">X</span>
+                                </button>
+                              </div>
                             </td>
                           ) : null}
                         </tr>
@@ -6551,7 +6777,10 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                   <button
                     className={cn("overview-create-switcher-button", openCreatePanelKey === action.key && "is-active")}
                     key={action.key}
-                    onClick={() => setOpenCreatePanelKey(action.key)}
+                    onClick={() => {
+                      setOverviewEditTarget(null);
+                      setOpenCreatePanelKey(action.key);
+                    }}
                     type="button"
                   >
                     {action.label}
@@ -6561,6 +6790,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
               {openCreatePanelKey === "overview-details" ? (
               <CreatePanel
+                eyebrow="Edit"
                 meta={
                   <>
                     <span className="pill">{activeProject.overview.location || "No location"}</span>
@@ -6626,48 +6856,37 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
               {openCreatePanelKey === "overview-contractor" ? (
               <CreatePanel
+                eyebrow={overviewEditingContractor ? "Edit" : "Create"}
                 meta={
                   <>
                     <span className="pill">{activeProject.projectContractors.length} records</span>
-                    <span className="pill">Editable</span>
+                    <span className="pill">{overviewEditingContractor ? "Editing" : "Editable"}</span>
                   </>
                 }
-                title="Add contractor information"
+                title={overviewEditingContractor ? "Edit contractor information" : "Add contractor information"}
               >
                 {canManageOverviewTeams ? (
                   <form
                     className="module-form-grid"
-                    onSubmit={(event) =>
-                      handleRecordCreate(event, {
-                        table: "project_contractors",
-                        label: "Contractor information saved.",
-                        buildPayload: (formData) => {
-                          const trades = readSelectedContractorTrades(formData);
-                          if (!trades.length) {
-                            throw new Error("Select at least one trade for the contractor entry.");
-                          }
-
-                          return {
-                            company_name: String(formData.get("companyName") ?? "").trim(),
-                            contractor_type: String(formData.get("contractorType") ?? "main_contractor") as ContractorPartyType,
-                            trades
-                          };
-                        },
-                        select: "id, company_name, contractor_type, trades",
-                        append: (project, data) => ({
-                          ...project,
-                          projectContractors: sortProjectContractors([...project.projectContractors, buildProjectContractorFromRow(data)])
-                        })
-                      })
-                    }
+                    onSubmit={(event) => handleOverviewContractorSubmit(event, overviewEditingContractor)}
                   >
                     <label className="field">
                       <span>Company name</span>
-                      <input name="companyName" placeholder="Northfield Projects" required />
+                      <input
+                        defaultValue={overviewEditingContractor?.companyName ?? ""}
+                        key={`contractor-company-${overviewEditingContractor?.id ?? "new"}`}
+                        name="companyName"
+                        placeholder="Northfield Projects"
+                        required
+                      />
                     </label>
                     <label className="field">
                       <span>Type</span>
-                      <select name="contractorType">
+                      <select
+                        defaultValue={overviewEditingContractor?.contractorType ?? "main_contractor"}
+                        key={`contractor-type-${overviewEditingContractor?.id ?? "new"}`}
+                        name="contractorType"
+                      >
                         {CONTRACTOR_TYPE_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
@@ -6680,15 +6899,28 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                       <div className="selection-grid">
                         {CONTRACTOR_TRADE_OPTIONS.map((option) => (
                           <label className="selection-card" key={option.value}>
-                            <input name="trades" type="checkbox" value={option.value} />
+                            <input
+                              defaultChecked={overviewEditingContractor?.trades.includes(option.value) ?? false}
+                              key={`contractor-trade-${overviewEditingContractor?.id ?? "new"}-${option.value}`}
+                              name="trades"
+                              type="checkbox"
+                              value={option.value}
+                            />
                             <span>{option.label}</span>
                           </label>
                         ))}
                       </div>
                     </div>
-                    <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
-                      Add contractor company
-                    </button>
+                    <div className="record-actions field-full">
+                      <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
+                        {overviewEditingContractor ? "Save contractor" : "Add contractor company"}
+                      </button>
+                      {overviewEditingContractor ? (
+                        <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
+                          Cancel edit
+                        </button>
+                      ) : null}
+                    </div>
                   </form>
                 ) : (
                   <p className="muted-copy">Contractor details are shown above. Your current role has read-only access.</p>
@@ -6698,58 +6930,57 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
               {openCreatePanelKey === "overview-consultant" ? (
               <CreatePanel
+                eyebrow={overviewEditingConsultant ? "Edit" : "Create"}
                 meta={
                   <>
                     <span className="pill">{activeProject.projectConsultants.length} records</span>
-                    <span className="pill">Editable</span>
+                    <span className="pill">{overviewEditingConsultant ? "Editing" : "Editable"}</span>
                   </>
                 }
-                title="Add consultant details"
+                title={overviewEditingConsultant ? "Edit consultant details" : "Add consultant details"}
               >
                 {canManageOverviewTeams ? (
                   <form
                     className="module-form-grid"
-                    onSubmit={(event) =>
-                      handleRecordCreate(event, {
-                        table: "project_consultants",
-                        label: "Consultant details saved.",
-                        buildPayload: (formData) => {
-                          const trades = readSelectedConsultantTrades(formData);
-                          if (!trades.length) {
-                            throw new Error("Select at least one trade for the consultant entry.");
-                          }
-
-                          return {
-                            company_name: String(formData.get("companyName") ?? "").trim(),
-                            trades
-                          };
-                        },
-                        select: "id, company_name, trades",
-                        append: (project, data) => ({
-                          ...project,
-                          projectConsultants: sortProjectConsultants([...project.projectConsultants, buildProjectConsultantFromRow(data)])
-                        })
-                      })
-                    }
+                    onSubmit={(event) => handleOverviewConsultantSubmit(event, overviewEditingConsultant)}
                   >
                     <label className="field field-full">
                       <span>Consultant company</span>
-                      <input name="companyName" placeholder="Studio Form Architects" required />
+                      <input
+                        defaultValue={overviewEditingConsultant?.companyName ?? ""}
+                        key={`consultant-company-${overviewEditingConsultant?.id ?? "new"}`}
+                        name="companyName"
+                        placeholder="Studio Form Architects"
+                        required
+                      />
                     </label>
                     <div className="field field-full">
                       <span>Trade</span>
                       <div className="selection-grid compact-selection-grid">
                         {CONSULTANT_TRADE_OPTIONS.map((option) => (
                           <label className="selection-card" key={option.value}>
-                            <input name="trades" type="checkbox" value={option.value} />
+                            <input
+                              defaultChecked={overviewEditingConsultant?.trades.includes(option.value) ?? false}
+                              key={`consultant-trade-${overviewEditingConsultant?.id ?? "new"}-${option.value}`}
+                              name="trades"
+                              type="checkbox"
+                              value={option.value}
+                            />
                             <span>{option.label}</span>
                           </label>
                         ))}
                       </div>
                     </div>
-                    <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
-                      Add consultant company
-                    </button>
+                    <div className="record-actions field-full">
+                      <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
+                        {overviewEditingConsultant ? "Save consultant" : "Add consultant company"}
+                      </button>
+                      {overviewEditingConsultant ? (
+                        <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
+                          Cancel edit
+                        </button>
+                      ) : null}
+                    </div>
                   </form>
                 ) : (
                   <p className="muted-copy">Consultant details are shown above. Your current role has read-only access.</p>
@@ -6759,21 +6990,41 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
 
               {openCreatePanelKey === "overview-milestone" ? (
               <CreatePanel
+                eyebrow={overviewEditingMilestone ? "Edit" : "Create"}
                 meta={<span className="pill">{activeProject.milestones.length} records</span>}
-                title="Add milestone"
+                title={overviewEditingMilestone ? "Edit milestone" : "Add milestone"}
               >
-                <form className="inline-create-form" onSubmit={handleMilestoneCreate}>
+                <form className="inline-create-form" onSubmit={(event) => handleOverviewMilestoneSubmit(event, overviewEditingMilestone)}>
                   <label className="field">
                     <span>Milestone</span>
-                    <input name="title" placeholder="Authority submission" required />
+                    <input
+                      defaultValue={overviewEditingMilestone?.title ?? ""}
+                      key={`milestone-title-${overviewEditingMilestone?.id ?? "new"}`}
+                      name="title"
+                      placeholder="Authority submission"
+                      required
+                    />
                   </label>
                   <label className="field">
                     <span>Date</span>
-                    <input name="dueDate" type="date" required />
+                    <input
+                      defaultValue={overviewEditingMilestone?.dueDate ?? ""}
+                      key={`milestone-date-${overviewEditingMilestone?.id ?? "new"}`}
+                      name="dueDate"
+                      type="date"
+                      required
+                    />
                   </label>
-                  <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
-                    Add milestone
-                  </button>
+                  <div className="record-actions">
+                    <button className="secondary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
+                      {overviewEditingMilestone ? "Save milestone" : "Add milestone"}
+                    </button>
+                    {overviewEditingMilestone ? (
+                      <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
+                        Cancel edit
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
               </CreatePanel>
               ) : null}
@@ -7019,7 +7270,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                             <th className="submission-date-column">Date</th>
                             <th className="submission-main-column">Submission</th>
                             <th className="submission-count-column">Items</th>
-                            <th className="submission-owner-column">Submitted by</th>
+                            <th className="submission-owner-column mobile-table-secondary">Submitted by</th>
                             <th className="submission-review-column">Client</th>
                             <th className="mobile-table-optional">Consultant</th>
                             <th className="mobile-table-optional">Files</th>
@@ -7060,7 +7311,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                                 <td className="submission-count-column">
                                   <span className="pill">{submissionItems.length}</span>
                                 </td>
-                                <td className="submission-owner-column">
+                                <td className="submission-owner-column mobile-table-secondary">
                                   <strong>{getRoleLabel(ownerRole, submission.ownerEmail)}</strong>
                                   <small>{submission.ownerEmail || "Unknown user"}</small>
                                 </td>
