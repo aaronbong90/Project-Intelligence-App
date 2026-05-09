@@ -1,14 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import {
-  FREE_PILOT_MAX_ATTACHMENTS_PER_UPLOAD,
-  FREE_PILOT_MAX_DOCUMENT_BYTES,
-  FREE_PILOT_MAX_IMAGE_BYTES,
-  FREE_PILOT_RECOMMENDED_ACTIVE_TESTERS,
-  FREE_PILOT_RECOMMENDED_PROJECTS,
-  formatBytes
-} from "@/lib/free-pilot";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { canAccessAdminConsole, createModulePermissions, getRoleLabel, MASTER_ADMIN_EMAIL, MODULE_KEYS } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatSectionLabel } from "@/lib/utils";
@@ -43,6 +35,11 @@ type Props = {
   isConfigured: boolean;
 };
 
+type AccessTableRow = {
+  user: AdminUserRecord;
+  access: UserProjectAccess | null;
+};
+
 function getDefaultCreateRole(viewer: AppUserProfile | null): AssignableRole {
   return viewer?.role === "client" ? "contractor" : "client";
 }
@@ -63,6 +60,16 @@ function buildDraft(projectId = "", role: UserRole = "consultant", modules?: Mod
   };
 }
 
+function clampModulesToProjectScope(modules: ModulePermissions, project?: AdminProjectSummary) {
+  if (!project) {
+    return modules;
+  }
+
+  return createModulePermissions(
+    Object.fromEntries(MODULE_KEYS.map((moduleKey) => [moduleKey, modules[moduleKey] && project.manageableModules[moduleKey]])) as Partial<ModulePermissions>
+  );
+}
+
 function buildDraftFromAccess(access: UserProjectAccess): AssignmentDraft {
   return buildDraft(access.projectId, access.role, access.modules);
 }
@@ -72,10 +79,16 @@ function buildInitialDrafts(users: AdminUserRecord[], projects: AdminProjectSumm
     users.map((user) => {
       const editableAccess = user.projectAccess.find((access) => !access.isOwner);
       const firstAssignableProject = projects.find((project) => project.canManageMembers && project.ownerId !== user.id)?.id ?? "";
+      const draftProjectId = editableAccess?.projectId ?? firstAssignableProject;
+      const draftProject = projects.find((project) => project.id === draftProjectId);
+      const draft = editableAccess ? buildDraftFromAccess(editableAccess) : buildDraft(firstAssignableProject, user.role);
 
       return [
         user.id,
-        editableAccess ? buildDraftFromAccess(editableAccess) : buildDraft(firstAssignableProject, user.role)
+        {
+          ...draft,
+          modules: clampModulesToProjectScope(draft.modules, draftProject)
+        }
       ];
     })
   ) as Record<string, AssignmentDraft>;
@@ -119,11 +132,43 @@ function getProjectRoleOptions(viewer: AppUserProfile | null, user: AdminUserRec
   ] as const;
 }
 
+function getUserInitials(email: string) {
+  const [namePart] = email.split("@");
+  const parts = namePart.split(/[._-]/).filter(Boolean);
+  return (parts[0]?.[0] ?? "U").toUpperCase() + (parts[1]?.[0] ?? parts[0]?.[1] ?? "").toUpperCase();
+}
+
+function getAccessTableKey(userId: string, access: UserProjectAccess | null) {
+  return `${userId}:${access?.membershipId ?? access?.projectId ?? "new"}`;
+}
+
+function getEnabledModuleCount(modules: ModulePermissions) {
+  return MODULE_KEYS.filter((moduleKey) => modules[moduleKey]).length;
+}
+
+function canDeleteUserAccount(viewer: AppUserProfile | null, user: AdminUserRecord) {
+  if (!viewer || (viewer.role !== "master_admin" && viewer.role !== "client")) {
+    return false;
+  }
+
+  if (viewer.id === user.id || user.role === "master_admin" || user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) {
+    return false;
+  }
+
+  if (viewer.role === "client") {
+    return user.role !== "client" && user.clientOwnerId === viewer.id;
+  }
+
+  return true;
+}
+
 export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfigured }: Props) {
   const [users, setUsers] = useState(initialUsers);
   const [drafts, setDrafts] = useState<Record<string, AssignmentDraft>>(() => buildInitialDrafts(initialUsers, projects));
   const [createUserDraft, setCreateUserDraft] = useState<CreateUserDraft>(() => createEmptyUserDraft(viewer));
   const [managedPasswordDrafts, setManagedPasswordDrafts] = useState<Record<string, PasswordDraft>>({});
+  const [editingAccessKey, setEditingAccessKey] = useState<string | null>(null);
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -134,23 +179,6 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
     () => users.reduce((total, user) => total + user.projectAccess.filter((access) => !access.isOwner).length, 0),
     [users]
   );
-  const freePilotWatch = useMemo(() => {
-    const notes: string[] = [];
-
-    if (activeUsers > FREE_PILOT_RECOMMENDED_ACTIVE_TESTERS) {
-      notes.push(`Active users are above the recommended free-pilot cap of ${FREE_PILOT_RECOMMENDED_ACTIVE_TESTERS}.`);
-    }
-
-    if (projects.length > FREE_PILOT_RECOMMENDED_PROJECTS) {
-      notes.push(`You currently have ${projects.length} visible projects. Keeping the live pilot to ${FREE_PILOT_RECOMMENDED_PROJECTS} project helps keep usage low.`);
-    }
-
-    return {
-      tone: notes.length ? "pending" : "approved",
-      title: notes.length ? "Watch free-tier usage" : "Free pilot looks healthy",
-      notes
-    } as const;
-  }, [activeUsers, projects.length]);
   const clientDirectories = useMemo(
     () =>
       users
@@ -158,7 +186,18 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
         .sort((left, right) => left.email.localeCompare(right.email)),
     [users]
   );
-  const canCreateUsers = viewer?.role === "master_admin" || viewer?.role === "client";
+  const accessTableRows = useMemo(
+    () =>
+      users.flatMap<AccessTableRow>((user) => {
+        if (!user.projectAccess.length) {
+          return [{ user, access: null }];
+        }
+
+        return user.projectAccess.map((access) => ({ user, access }));
+      }),
+    [users]
+  );
+  const canCreateUsers = isAllowed && (viewer?.role === "master_admin" || viewer?.role === "client");
 
   async function requireAllowedAdminUser() {
     if (!isConfigured) {
@@ -323,7 +362,12 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
 
   function handleProjectSelect(user: AdminUserRecord, projectId: string) {
     const existingAccess = user.projectAccess.find((access) => access.projectId === projectId && !access.isOwner);
-    updateDraft(user.id, () => (existingAccess ? buildDraftFromAccess(existingAccess) : buildDraft(projectId, user.role)));
+    const project = projects.find((item) => item.id === projectId);
+    const nextDraft = existingAccess ? buildDraftFromAccess(existingAccess) : buildDraft(projectId, user.role);
+    updateDraft(user.id, () => ({
+      ...nextDraft,
+      modules: clampModulesToProjectScope(nextDraft.modules, project)
+    }));
   }
 
   function handleModuleToggle(userId: string, moduleKey: ModuleKey, checked: boolean) {
@@ -331,7 +375,7 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
       ...draft,
       modules: {
         ...draft.modules,
-        [moduleKey]: checked
+        [moduleKey]: projects.find((project) => project.id === draft.projectId)?.manageableModules[moduleKey] ? checked : false
       }
     }));
   }
@@ -363,27 +407,29 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
           throw new Error("Client accounts can assign contractor or consultant users only.");
         }
 
+        const scopedModules = clampModulesToProjectScope(draft.modules, project);
         const supabase = await requireAllowedAdminUser();
         const payload = {
           project_id: draft.projectId,
           user_id: user.id,
           email: user.email,
           role: draft.role,
-          can_overview: draft.modules.overview,
-          can_contractor_submissions: draft.modules.contractor_submissions,
-          can_handover: draft.modules.handover,
-          can_daily_reports: draft.modules.daily_reports,
-          can_weekly_reports: draft.modules.weekly_reports,
-          can_financials: draft.modules.financials,
-          can_completion: draft.modules.completion,
-          can_defects: draft.modules.defects
+          can_overview: scopedModules.overview,
+          can_contractor_submissions: scopedModules.contractor_submissions,
+          can_handover: scopedModules.handover,
+          can_daily_reports: scopedModules.daily_reports,
+          can_weekly_reports: scopedModules.weekly_reports,
+          can_financials: scopedModules.financials,
+          can_completion: scopedModules.completion,
+          can_defects: scopedModules.defects,
+          can_site_intelligence: scopedModules.site_intelligence
         };
 
         const { data, error: upsertError } = await supabase
           .from("project_members")
           .upsert(payload, { onConflict: "project_id,user_id" })
           .select(
-            "id, project_id, user_id, role, can_overview, can_contractor_submissions, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects"
+            "id, project_id, user_id, role, can_overview, can_contractor_submissions, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects, can_site_intelligence"
           )
           .single();
 
@@ -406,23 +452,50 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
                 weekly_reports: data.can_weekly_reports,
                 financials: data.can_financials,
                 completion: data.can_completion,
-                defects: data.can_defects
+                defects: data.can_defects,
+                site_intelligence: data.can_site_intelligence
               }),
               isOwner: false
             }
           ].sort((a, b) => a.projectName.localeCompare(b.projectName))
         }));
         setFeedback(`Saved ${project.name} access for ${user.email}.`);
+        setEditingAccessKey(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to save project access.");
       }
     });
   }
 
-  function handleLoadAccess(userId: string, access: UserProjectAccess) {
+  function handleLoadAccess(userId: string, access: UserProjectAccess, shouldShowFeedback = true) {
     resetMessages();
-    updateDraft(userId, () => buildDraftFromAccess(access));
-    setFeedback(`Loaded ${access.projectName} permissions into the editor.`);
+    const project = projects.find((item) => item.id === access.projectId);
+    const draft = buildDraftFromAccess(access);
+    updateDraft(userId, () => ({
+      ...draft,
+      modules: clampModulesToProjectScope(draft.modules, project)
+    }));
+    if (shouldShowFeedback) {
+      setFeedback(`Loaded ${access.projectName} permissions into the editor.`);
+    }
+  }
+
+  function handleAccessEdit(user: AdminUserRecord, access: UserProjectAccess | null) {
+    resetMessages();
+    if (access) {
+      handleLoadAccess(user.id, access, false);
+      setEditingAccessKey(getAccessTableKey(user.id, access));
+      return;
+    }
+
+    const firstAssignableProject = projects.find((project) => project.canManageMembers && project.ownerId !== user.id);
+    if (firstAssignableProject) {
+      updateDraft(user.id, () => ({
+        ...buildDraft(firstAssignableProject.id, user.role),
+        modules: clampModulesToProjectScope(createModulePermissions(), firstAssignableProject)
+      }));
+    }
+    setEditingAccessKey(getAccessTableKey(user.id, null));
   }
 
   function handleRemoveAccess(user: AdminUserRecord, access: UserProjectAccess) {
@@ -447,9 +520,61 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
           ...current,
           projectAccess: current.projectAccess.filter((item) => item.membershipId !== access.membershipId)
         }));
+        if (editingAccessKey === getAccessTableKey(user.id, access)) {
+          setEditingAccessKey(null);
+        }
         setFeedback(`Removed ${access.projectName} access for ${user.email}.`);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to remove project access.");
+      }
+    });
+  }
+
+  function handleDeleteUser(user: AdminUserRecord) {
+    resetMessages();
+
+    if (!canDeleteUserAccount(viewer, user)) {
+      setError("You do not have permission to delete this user account.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${user.email}? This removes the user account, project access, and any records owned by that account.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const response = await fetch(`/api/admin/users/${user.id}`, {
+          method: "DELETE"
+        });
+        const payload = (await response.json()) as {
+          error?: string;
+          message?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Unable to delete this user account.");
+        }
+
+        setUsers((current) => current.filter((item) => item.id !== user.id));
+        setDrafts((current) => {
+          const next = { ...current };
+          delete next[user.id];
+          return next;
+        });
+        setManagedPasswordDrafts((current) => {
+          const next = { ...current };
+          delete next[user.id];
+          return next;
+        });
+        setEditingAccessKey(null);
+        setFeedback(payload.message ?? `Deleted ${user.email}.`);
+      } catch (caughtError) {
+        setError(caughtError instanceof Error ? caughtError.message : "Unable to delete this user account.");
       }
     });
   }
@@ -516,12 +641,17 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
         );
         setDrafts((current) => ({
           ...current,
-          [nextUser.id]: buildDraft(
-            projects.find((project) => project.canManageMembers && project.ownerId !== nextUser.id)?.id ?? "",
-            nextUser.role
-          )
+          [nextUser.id]: (() => {
+            const firstProject = projects.find((project) => project.canManageMembers && project.ownerId !== nextUser.id);
+            const draft = buildDraft(firstProject?.id ?? "", nextUser.role);
+            return {
+              ...draft,
+              modules: clampModulesToProjectScope(draft.modules, firstProject)
+            };
+          })()
         }));
         setCreateUserDraft(createEmptyUserDraft(viewer));
+        setIsCreateUserOpen(false);
         setFeedback(payload.message ?? `Account created for ${nextUser.email}.`);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to create the user account.");
@@ -651,9 +781,9 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
           ) : null}
         </div>
         <div className="countdown-card">
-          <span>Directory</span>
-          <strong>{users.length} users</strong>
-          <small>{projects.length} visible projects</small>
+          <span>{isAllowed ? "Directory" : "Account"}</span>
+          <strong>{isAllowed ? `${users.length} users` : "Password only"}</strong>
+          <small>{isAllowed ? `${projects.length} visible projects` : "Manage your own sign-in details"}</small>
         </div>
       </section>
 
@@ -694,10 +824,12 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
           <div className="section-header">
             <div>
               <p className="eyebrow">Directory Controls</p>
-              <h3>Account settings only</h3>
+              <h3>Password settings only</h3>
             </div>
           </div>
-          <p className="muted-copy">{viewer?.isSuspended ? "Account suspended." : "Password changes only in this view."}</p>
+          <p className="muted-copy">
+            {viewer?.isSuspended ? "Account suspended." : "Your role can only change your own password from Settings."}
+          </p>
         </section>
       ) : (
         <>
@@ -728,394 +860,474 @@ export function AdminShell({ initialUsers, projects, viewer, isAllowed, isConfig
             </div>
           </section>
 
-          <section className="content-card">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">Free Pilot Watch</p>
-                <h3>Keep the rollout inside the free tier</h3>
-              </div>
-              <span className={cn("pill", "status-pill", `status-${freePilotWatch.tone}`)}>{freePilotWatch.title}</span>
-            </div>
-            <div className="pilot-guard-grid">
-              <article className="panel-surface admin-panel">
-                <p className="eyebrow">Recommended Limits</p>
-                <div className="attachment-list">
-                  <span className="pill">{FREE_PILOT_RECOMMENDED_ACTIVE_TESTERS} active testers</span>
-                  <span className="pill">{FREE_PILOT_RECOMMENDED_PROJECTS} live project</span>
-                  <span className="pill">{FREE_PILOT_MAX_ATTACHMENTS_PER_UPLOAD} files per upload</span>
-                  <span className="pill">{formatBytes(FREE_PILOT_MAX_IMAGE_BYTES)} max image</span>
-                  <span className="pill">{formatBytes(FREE_PILOT_MAX_DOCUMENT_BYTES)} max document</span>
-                </div>
-              </article>
-              <article className="panel-surface admin-panel">
-                <p className="eyebrow">Current Watch Notes</p>
-                {freePilotWatch.notes.length ? (
-                  <ul className="notice-list">
-                    {freePilotWatch.notes.map((note) => (
-                      <li key={note}>{note}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="muted-copy">Current user and project counts are still within the recommended free-pilot range.</p>
-                )}
-              </article>
-            </div>
-            <p className="muted-copy top-gap">
-              Video uploads are disabled in the pilot. Users can keep working with photos, PDF, Word, Excel, and PowerPoint files, and larger photos are automatically optimized before upload.
-            </p>
-          </section>
-
           {canCreateUsers ? (
-            <section className="content-card">
-              <div className="section-header">
+            <section className={cn("content-card", "create-user-card", isCreateUserOpen && "create-user-card-open")}>
+              <div className="section-header create-user-summary">
                 <div>
                   <p className="eyebrow">User Setup</p>
                   <h3>Create a new account</h3>
+                  <p className="muted-copy">Open this only when you need to add a new user.</p>
                 </div>
+                <button
+                  aria-expanded={isCreateUserOpen}
+                  aria-label={isCreateUserOpen ? "Close new account form" : "Open new account form"}
+                  className="create-user-toggle-button"
+                  onClick={() => setIsCreateUserOpen((isOpen) => !isOpen)}
+                  type="button"
+                >
+                  <span aria-hidden="true">{isCreateUserOpen ? "-" : "+"}</span>
+                </button>
               </div>
-              <form className="membership-form-grid" onSubmit={handleCreateUser}>
-                <label className="field field-full">
-                  <span>Email</span>
-                  <input
-                    name="email"
-                    onChange={(event) => setCreateUserDraft((current) => ({ ...current, email: event.target.value }))}
-                    placeholder="new.user@company.com"
-                    required
-                    type="email"
-                    value={createUserDraft.email}
-                  />
-                </label>
-                <label className="field">
-                  <span>Account role</span>
-                  <select
-                    onChange={(event) =>
-                      setCreateUserDraft((current) => ({
-                        ...current,
-                        role: event.target.value as AssignableRole,
-                        clientOwnerId: event.target.value === "client" ? "" : current.clientOwnerId
-                      }))
-                    }
-                    value={createUserDraft.role}
-                  >
-                    {viewer?.role === "master_admin" ? <option value="client">Client</option> : null}
-                    <option value="contractor">Main Contractor</option>
-                    <option value="subcontractor">Sub Contractor</option>
-                    <option value="consultant">Consultant</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Client directory</span>
-                  <select
-                    disabled={viewer?.role === "client" || createUserDraft.role === "client" || !clientDirectories.length}
-                    onChange={(event) => setCreateUserDraft((current) => ({ ...current, clientOwnerId: event.target.value }))}
-                    value={viewer?.role === "client" || createUserDraft.role === "client" ? "" : createUserDraft.clientOwnerId}
-                  >
-                    <option value="">
-                      {viewer?.role === "client" ? viewer.email : clientDirectories.length ? "Select client" : "Create a client first"}
-                    </option>
-                    {viewer?.role === "master_admin"
-                      ? clientDirectories.map((client) => (
-                          <option key={client.id} value={client.id}>
-                            {client.email}
-                          </option>
-                        ))
-                      : null}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Initial password</span>
-                  <input
-                    name="password"
-                    onChange={(event) => setCreateUserDraft((current) => ({ ...current, password: event.target.value }))}
-                    placeholder="At least 8 characters"
-                    required
-                    type="password"
-                    value={createUserDraft.password}
-                  />
-                </label>
-                <label className="field">
-                  <span>Confirm password</span>
-                  <input
-                    name="confirmPassword"
-                    onChange={(event) => setCreateUserDraft((current) => ({ ...current, confirmPassword: event.target.value }))}
-                    placeholder="Repeat the starter password"
-                    required
-                    type="password"
-                    value={createUserDraft.confirmPassword}
-                  />
-                </label>
-                <div className="record-actions field-full">
-                  <span className="pill">Starter password required</span>
-                  <button className="primary-button" disabled={isPending || !isConfigured} type="submit">
-                    {isPending ? "Creating account..." : "Create account"}
-                  </button>
-                </div>
-              </form>
+              {isCreateUserOpen ? (
+                <form className="membership-form-grid create-user-form" onSubmit={handleCreateUser}>
+                  <label className="field field-full">
+                    <span>Email</span>
+                    <input
+                      name="email"
+                      onChange={(event) => setCreateUserDraft((current) => ({ ...current, email: event.target.value }))}
+                      placeholder="new.user@company.com"
+                      required
+                      type="email"
+                      value={createUserDraft.email}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Account role</span>
+                    <select
+                      onChange={(event) =>
+                        setCreateUserDraft((current) => ({
+                          ...current,
+                          role: event.target.value as AssignableRole,
+                          clientOwnerId: event.target.value === "client" ? "" : current.clientOwnerId
+                        }))
+                      }
+                      value={createUserDraft.role}
+                    >
+                      {viewer?.role === "master_admin" ? <option value="client">Client</option> : null}
+                      <option value="contractor">Main Contractor</option>
+                      <option value="subcontractor">Sub Contractor</option>
+                      <option value="consultant">Consultant</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Client directory</span>
+                    <select
+                      disabled={viewer?.role === "client" || createUserDraft.role === "client" || !clientDirectories.length}
+                      onChange={(event) => setCreateUserDraft((current) => ({ ...current, clientOwnerId: event.target.value }))}
+                      value={viewer?.role === "client" || createUserDraft.role === "client" ? "" : createUserDraft.clientOwnerId}
+                    >
+                      <option value="">
+                        {viewer?.role === "client" ? viewer.email : clientDirectories.length ? "Select client" : "Create a client first"}
+                      </option>
+                      {viewer?.role === "master_admin"
+                        ? clientDirectories.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.email}
+                            </option>
+                          ))
+                        : null}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Initial password</span>
+                    <input
+                      name="password"
+                      onChange={(event) => setCreateUserDraft((current) => ({ ...current, password: event.target.value }))}
+                      placeholder="At least 8 characters"
+                      required
+                      type="password"
+                      value={createUserDraft.password}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Confirm password</span>
+                    <input
+                      name="confirmPassword"
+                      onChange={(event) => setCreateUserDraft((current) => ({ ...current, confirmPassword: event.target.value }))}
+                      placeholder="Repeat the starter password"
+                      required
+                      type="password"
+                      value={createUserDraft.confirmPassword}
+                    />
+                  </label>
+                  <div className="record-actions field-full">
+                    <span className="pill">Starter password required</span>
+                    <button className="primary-button" disabled={isPending || !isConfigured} type="submit">
+                      {isPending ? "Creating account..." : "Create account"}
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </section>
           ) : null}
 
-          <section className="section-stack">
-            {users.map((user) => {
-              const draft = drafts[user.id] ?? buildDraft();
-              const assignableProjects = projects.filter((project) => project.canManageMembers && project.ownerId !== user.id);
-              const projectRoleOptions = getProjectRoleOptions(viewer, user);
+          <section className="content-card access-control-card">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Access Control</p>
+                <h3>User Settings</h3>
+                <p className="muted-copy">
+                  Review every user, account status, and project assignment in one table. Use Edit to update roles, module access, or account controls.
+                </p>
+              </div>
+              <div className="record-actions">
+                <span className="pill">{accessTableRows.length} row(s)</span>
+                <span className="pill">{assignmentCount} assigned</span>
+              </div>
+            </div>
 
-              return (
-                <article className="content-card" key={user.id}>
-                  <div className="section-header">
-                    <div>
-                      <p className="eyebrow">User</p>
-                      <h3>{user.email}</h3>
-                    </div>
-                    <div className="record-actions">
-                      <span className="pill">{getRoleLabel(user.role, user.email)}</span>
-                      <span className="pill">{user.isSuspended ? "Suspended" : "Active"}</span>
-                    </div>
-                  </div>
+            <div className="access-table-wrap top-gap">
+              <table className="access-control-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Project</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Module Access</th>
+                    <th>Directory</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessTableRows.map(({ user, access }) => {
+                    const rowKey = getAccessTableKey(user.id, access);
+                    const draft = drafts[user.id] ?? buildDraft();
+                    const assignableProjects = projects.filter((project) => project.canManageMembers && project.ownerId !== user.id);
+                    const projectRoleOptions = getProjectRoleOptions(viewer, user);
+                    const selectedProject = projects.find((project) => project.id === draft.projectId);
+                    const project = access ? projects.find((item) => item.id === access.projectId) : undefined;
+                    const canManageThisAccess = access
+                      ? Boolean(project?.canManageMembers && !access.isOwner && projectRoleOptions.length)
+                      : Boolean(assignableProjects.length && projectRoleOptions.length);
+                    const modules = access?.modules ?? draft.modules;
+                    const enabledModuleCount = getEnabledModuleCount(modules);
+                    const isEditing = editingAccessKey === rowKey;
 
-                  <div className="attachment-list top-gap">
-                    <span className="pill">
-                      {user.projectAccess.filter((access) => access.isOwner).length} owned /{" "}
-                      {user.projectAccess.filter((access) => !access.isOwner).length} assigned
-                    </span>
-                    <span className="pill">Directory: {user.clientOwnerEmail ?? (user.role === "client" ? user.email : "Unassigned")}</span>
-                    {user.createdByEmail ? <span className="pill">Created by {user.createdByEmail}</span> : null}
-                  </div>
-
-                  <div className="admin-controls-grid top-gap">
-                    <div className="panel-surface admin-panel">
-                      <p className="eyebrow">Global Role</p>
-                      {viewer?.role === "master_admin" && user.email.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase() ? (
-                        <label className="field">
-                          <span>User role</span>
-                          <select
-                            disabled={isPending || !isConfigured}
-                            onChange={(event) => handleRoleChange(user, event.target.value as AssignableRole)}
-                            value={getAssignableRole(user.role)}
-                          >
-                            <option value="client">Client</option>
-                            <option value="contractor">Main Contractor</option>
-                            <option value="subcontractor">Sub Contractor</option>
-                            <option value="consultant">Consultant</option>
-                          </select>
-                        </label>
-                      ) : (
-                        <>
-                          <strong>{getRoleLabel(user.role, user.email)}</strong>
-                          <p className="muted-copy">{user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ? "Locked account." : "Restricted."}</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="panel-surface admin-panel">
-                      <p className="eyebrow">Client Directory</p>
-                      {user.role === "client" ? (
-                        <>
-                          <strong>{user.email}</strong>
-                          <p className="muted-copy">Own directory.</p>
-                        </>
-                      ) : viewer?.role === "master_admin" ? (
-                        <label className="field">
-                          <span>Managed by client</span>
-                          <select
-                            disabled={isPending || !isConfigured}
-                            onChange={(event) => handleClientOwnerChange(user, event.target.value)}
-                            value={user.clientOwnerId ?? ""}
-                          >
-                            <option value="">Unassigned</option>
-                            {clientDirectories.map((client) => (
-                              <option key={client.id} value={client.id}>
-                                {client.email}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : (
-                        <>
-                          <strong>{user.clientOwnerEmail ?? "Unassigned"}</strong>
-                          <p className="muted-copy">Read only.</p>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="panel-surface admin-panel">
-                      <p className="eyebrow">Account Status</p>
-                      <strong>{user.isSuspended ? "Suspended" : "Active"}</strong>
-                      <p className="muted-copy">Reset or override password from here.</p>
-                      <div className="record-actions">
-                        <button className="ghost-button" disabled={isPending || !isConfigured} onClick={() => handleResetEmail(user)} type="button">
-                          Send reset email
-                        </button>
-                        {viewer?.role === "master_admin" ? (
-                          <button
-                            className="ghost-button"
-                            disabled={isPending || !isConfigured || user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()}
-                            onClick={() => handleSuspensionToggle(user)}
-                            type="button"
-                          >
-                            {user.isSuspended ? "Reactivate user" : "Suspend user"}
-                          </button>
-                        ) : null}
-                      </div>
-                      {viewer?.role === "master_admin" ? (
-                        <div className="membership-form-grid top-gap">
-                          <label className="field">
-                            <span>Override password</span>
-                            <input
-                              onChange={(event) =>
-                                updateManagedPasswordDraft(user.id, (current) => ({ ...current, password: event.target.value }))
-                              }
-                              placeholder="At least 8 characters"
-                              type="password"
-                              value={(managedPasswordDrafts[user.id] ?? createEmptyPasswordDraft()).password}
-                            />
-                          </label>
-                          <label className="field">
-                            <span>Confirm override</span>
-                            <input
-                              onChange={(event) =>
-                                updateManagedPasswordDraft(user.id, (current) => ({ ...current, confirmPassword: event.target.value }))
-                              }
-                              placeholder="Repeat the override password"
-                              type="password"
-                              value={(managedPasswordDrafts[user.id] ?? createEmptyPasswordDraft()).confirmPassword}
-                            />
-                          </label>
-                          <div className="record-actions field-full">
-                            <button className="ghost-button" disabled={isPending || !isConfigured} onClick={() => handleManagedPasswordOverride(user)} type="button">
-                              Set password
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {projectRoleOptions.length ? (
-                    <div className="panel-surface top-gap">
-                      <div className="section-header">
-                        <div>
-                          <p className="eyebrow">Project Assignment</p>
-                          <h3>Project-specific role and modules</h3>
-                        </div>
-                      </div>
-                      <div className="membership-form-grid">
-                        <label className="field">
-                          <span>Project</span>
-                          <select
-                            disabled={isPending || !isConfigured || !assignableProjects.length}
-                            onChange={(event) => handleProjectSelect(user, event.target.value)}
-                            value={draft.projectId}
-                          >
-                            <option value="">{assignableProjects.length ? "Select project" : "No visible projects"}</option>
-                            {assignableProjects.map((project) => (
-                              <option key={project.id} value={project.id}>
-                                {project.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Project role</span>
-                          <select
-                            disabled={isPending || !isConfigured}
-                            onChange={(event) =>
-                              updateDraft(user.id, (current) => ({
-                                ...current,
-                                role: event.target.value as AssignableRole
-                              }))
-                            }
-                            value={draft.role}
-                          >
-                            {projectRoleOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                      <div className="permission-box top-gap">
-                        <span>Module access</span>
-                        <div className="permission-grid">
-                          {MODULE_KEYS.map((moduleKey) => (
-                            <label className="permission-item" key={`${user.id}-${moduleKey}`}>
-                              <input
-                                checked={draft.modules[moduleKey]}
-                                disabled={isPending || !isConfigured}
-                                onChange={(event) => handleModuleToggle(user.id, moduleKey, event.target.checked)}
-                                type="checkbox"
-                              />
-                              <span>{formatSectionLabel(moduleKey)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="record-actions">
-                        <button
-                          className="primary-button"
-                          disabled={isPending || !isConfigured || !draft.projectId || user.isSuspended}
-                          onClick={() => handleAssignmentSave(user)}
-                          type="button"
-                        >
-                          Save project access
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="panel-surface top-gap">
-                      <p className="eyebrow">Project Assignment</p>
-                      <strong>Read only</strong>
-                      <p className="muted-copy">{viewer?.role === "client" ? "Client scope only." : "Not assignable here."}</p>
-                    </div>
-                  )}
-
-                  <div className="list-grid top-gap">
-                    {user.projectAccess.length ? (
-                      user.projectAccess.map((access) => {
-                        const project = projects.find((item) => item.id === access.projectId);
-                        const canManageThisAccess = Boolean(project?.canManageMembers && !access.isOwner);
-
-                        return (
-                          <article className="record-surface" key={`${user.id}-${access.projectId}-${access.membershipId ?? "owner"}`}>
-                            <div className="record-header">
-                              <div>
-                                <strong>{access.projectName}</strong>
-                                <p>{access.isOwner ? "Project owner" : getRoleLabel(access.role, user.email)}</p>
-                              </div>
-                              <div className="record-actions">
-                                <span className="pill">{access.isOwner ? "Owner" : "Assigned"}</span>
-                                {canManageThisAccess ? (
-                                  <>
-                                    <button className="ghost-button" onClick={() => handleLoadAccess(user.id, access)} type="button">
-                                      Load
-                                    </button>
-                                    <button className="ghost-button" onClick={() => handleRemoveAccess(user, access)} type="button">
-                                      Remove access
-                                    </button>
-                                  </>
-                                ) : null}
-                              </div>
+                    return (
+                      <Fragment key={rowKey}>
+                        <tr key={rowKey}>
+                          <td>
+                            <div className="access-user-cell">
+                              <span className="access-avatar">{getUserInitials(user.email)}</span>
+                              <span>
+                                <strong>{user.email}</strong>
+                                <small>{getRoleLabel(user.role, user.email)}</small>
+                              </span>
                             </div>
-                            <div className="attachment-list">
-                              {MODULE_KEYS.filter((moduleKey) => access.modules[moduleKey]).map((moduleKey) => (
-                                <span className="pill" key={`${access.projectId}-${moduleKey}`}>
-                                  {formatSectionLabel(moduleKey)}
+                          </td>
+                          <td>
+                            <strong>{access?.projectName ?? "No project assigned"}</strong>
+                            <small>{access?.isOwner ? "Project owner" : access ? "Assigned access" : "Ready to assign"}</small>
+                          </td>
+                          <td>
+                            <span className="pill">{access?.isOwner ? "Owner" : access ? getRoleLabel(access.role, user.email) : "Not assigned"}</span>
+                          </td>
+                          <td>
+                            <span className={cn("pill", user.isSuspended ? "status-rejected" : "status-approved")}>
+                              {user.isSuspended ? "Suspended" : "Active"}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="access-module-strip">
+                              {MODULE_KEYS.slice(0, 5).map((moduleKey) => (
+                                <span
+                                  className={cn("access-module-dot", modules[moduleKey] && "on")}
+                                  key={`${rowKey}-${moduleKey}`}
+                                  title={formatSectionLabel(moduleKey)}
+                                >
+                                  {moduleKey === "site_intelligence" ? "AI" : formatSectionLabel(moduleKey).slice(0, 1)}
                                 </span>
                               ))}
+                              <span className="muted-copy">{enabledModuleCount} of {MODULE_KEYS.length}</span>
                             </div>
-                          </article>
-                        );
-                      })
-                    ) : (
-                      <article className="record-surface">
-                        <p className="muted-copy">No projects are assigned to this user yet.</p>
-                      </article>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
+                          </td>
+                          <td>
+                            <span className="muted-copy">{user.clientOwnerEmail ?? (user.role === "client" ? "Own directory" : "Unassigned")}</span>
+                          </td>
+                          <td>
+                            <div className="record-actions">
+                              {canManageThisAccess ? (
+                                <button className="secondary-button" onClick={() => handleAccessEdit(user, access)} type="button">
+                                  {access ? "Edit" : "Assign"}
+                                </button>
+                              ) : (
+                                <span className="pill">{access?.isOwner ? "Owner" : "Read only"}</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {isEditing ? (
+                          <tr className="access-edit-row" key={`${rowKey}-editor`}>
+                            <td colSpan={7}>
+                              <div className="access-inline-editor">
+                                <div className="section-header">
+                                  <div>
+                                    <p className="eyebrow">Editing User</p>
+                                    <h3>{user.email}</h3>
+                                    <p className="muted-copy">
+                                      Update user settings, project role, and module access here, then save changes.
+                                    </p>
+                                  </div>
+                                  <div className="record-actions">
+                                    <button className="ghost-button" onClick={() => setEditingAccessKey(null)} type="button">
+                                      Cancel
+                                    </button>
+                                    {access && !access.isOwner ? (
+                                      <button className="ghost-button" disabled={isPending || !isConfigured} onClick={() => handleRemoveAccess(user, access)} type="button">
+                                        Remove access
+                                      </button>
+                                    ) : null}
+                                    {canDeleteUserAccount(viewer, user) ? (
+                                      <button
+                                        className="ghost-button danger-action"
+                                        disabled={isPending || !isConfigured}
+                                        onClick={() => handleDeleteUser(user)}
+                                        type="button"
+                                      >
+                                        Delete user
+                                      </button>
+                                    ) : null}
+                                    <button
+                                      className="primary-button"
+                                      disabled={isPending || !isConfigured || !draft.projectId || user.isSuspended}
+                                      onClick={() => handleAssignmentSave(user)}
+                                      type="button"
+                                    >
+                                      Save changes
+                                    </button>
+                                  </div>
+                                </div>
+                                {projectRoleOptions.length ? (
+                                  <>
+                                    {viewer?.role === "master_admin" ? (
+                                      <details className="admin-account-details">
+                                        <summary className="disclosure-summary">
+                                          <span className="disclosure-copy">
+                                            <span className="disclosure-eyebrow">Account Controls</span>
+                                            <strong>Role, directory, password, and status</strong>
+                                            <span className="muted-copy">Use these only when the account itself needs a change.</span>
+                                          </span>
+                                          <span className="disclosure-summary-side">
+                                            <span className="pill">Optional</span>
+                                          </span>
+                                        </summary>
+                                        <div className="admin-controls-grid top-gap">
+                                          <div className="panel-surface admin-panel">
+                                            <p className="eyebrow">Global Role</p>
+                                            {user.email.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase() ? (
+                                              <label className="field">
+                                                <span>User role</span>
+                                                <select
+                                                  disabled={isPending || !isConfigured}
+                                                  onChange={(event) => handleRoleChange(user, event.target.value as AssignableRole)}
+                                                  value={getAssignableRole(user.role)}
+                                                >
+                                                  <option value="client">Client</option>
+                                                  <option value="contractor">Main Contractor</option>
+                                                  <option value="subcontractor">Sub Contractor</option>
+                                                  <option value="consultant">Consultant</option>
+                                                </select>
+                                              </label>
+                                            ) : (
+                                              <>
+                                                <strong>{getRoleLabel(user.role, user.email)}</strong>
+                                                <p className="muted-copy">Locked account.</p>
+                                              </>
+                                            )}
+                                          </div>
+                                          <div className="panel-surface admin-panel">
+                                            <p className="eyebrow">Client Directory</p>
+                                            {user.role === "client" ? (
+                                              <>
+                                                <strong>{user.email}</strong>
+                                                <p className="muted-copy">Own directory.</p>
+                                              </>
+                                            ) : (
+                                              <label className="field">
+                                                <span>Managed by client</span>
+                                                <select
+                                                  disabled={isPending || !isConfigured}
+                                                  onChange={(event) => handleClientOwnerChange(user, event.target.value)}
+                                                  value={user.clientOwnerId ?? ""}
+                                                >
+                                                  <option value="">Unassigned</option>
+                                                  {clientDirectories.map((client) => (
+                                                    <option key={client.id} value={client.id}>
+                                                      {client.email}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </label>
+                                            )}
+                                          </div>
+                                          <div className="panel-surface admin-panel">
+                                            <p className="eyebrow">Account Status</p>
+                                            <strong>{user.isSuspended ? "Suspended" : "Active"}</strong>
+                                            <div className="record-actions">
+                                              <button className="ghost-button" disabled={isPending || !isConfigured} onClick={() => handleResetEmail(user)} type="button">
+                                                Send reset email
+                                              </button>
+                                              <button
+                                                className="ghost-button"
+                                                disabled={isPending || !isConfigured || user.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()}
+                                                onClick={() => handleSuspensionToggle(user)}
+                                                type="button"
+                                              >
+                                                {user.isSuspended ? "Reactivate user" : "Suspend user"}
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <div className="panel-surface admin-panel">
+                                            <p className="eyebrow">Override Password</p>
+                                            <label className="field">
+                                              <span>New password</span>
+                                              <input
+                                                onChange={(event) =>
+                                                  updateManagedPasswordDraft(user.id, (current) => ({ ...current, password: event.target.value }))
+                                                }
+                                                placeholder="At least 8 characters"
+                                                type="password"
+                                                value={(managedPasswordDrafts[user.id] ?? createEmptyPasswordDraft()).password}
+                                              />
+                                            </label>
+                                            <label className="field">
+                                              <span>Confirm password</span>
+                                              <input
+                                                onChange={(event) =>
+                                                  updateManagedPasswordDraft(user.id, (current) => ({
+                                                    ...current,
+                                                    confirmPassword: event.target.value
+                                                  }))
+                                                }
+                                                placeholder="Repeat password"
+                                                type="password"
+                                                value={(managedPasswordDrafts[user.id] ?? createEmptyPasswordDraft()).confirmPassword}
+                                              />
+                                            </label>
+                                            <button className="ghost-button" disabled={isPending || !isConfigured} onClick={() => handleManagedPasswordOverride(user)} type="button">
+                                              Set password
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </details>
+                                    ) : null}
+                                    <div className="access-editor-grid">
+                                      <label className="field">
+                                        <span>Project</span>
+                                        <select
+                                          disabled={isPending || !isConfigured || !assignableProjects.length}
+                                          onChange={(event) => handleProjectSelect(user, event.target.value)}
+                                          value={draft.projectId}
+                                        >
+                                          <option value="">{assignableProjects.length ? "Select project" : "No visible projects"}</option>
+                                          {assignableProjects.map((projectOption) => (
+                                            <option key={projectOption.id} value={projectOption.id}>
+                                              {projectOption.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label className="field">
+                                        <span>Project role</span>
+                                        <select
+                                          disabled={isPending || !isConfigured}
+                                          onChange={(event) =>
+                                            updateDraft(user.id, (current) => ({
+                                              ...current,
+                                              role: event.target.value as AssignableRole
+                                            }))
+                                          }
+                                          value={draft.role}
+                                        >
+                                          {projectRoleOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    </div>
+                                    <div className="permission-box top-gap">
+                                      <span>Module access</span>
+                                      <div className="permission-grid access-permission-grid">
+                                        {MODULE_KEYS.map((moduleKey) => {
+                                          const canGrantModule = selectedProject?.manageableModules[moduleKey] ?? false;
+
+                                          return (
+                                            <label
+                                              className={cn("permission-item", !canGrantModule && "permission-item-disabled")}
+                                              key={`${rowKey}-edit-${moduleKey}`}
+                                            >
+                                              <input
+                                                checked={canGrantModule && draft.modules[moduleKey]}
+                                                disabled={isPending || !isConfigured || !canGrantModule}
+                                                onChange={(event) => handleModuleToggle(user.id, moduleKey, event.target.checked)}
+                                                type="checkbox"
+                                              />
+                                              <span>{formatSectionLabel(moduleKey)}</span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                      {viewer?.role === "client" ? (
+                                        <p className="muted-copy module-scope-note">Disabled modules are outside your current project access.</p>
+                                      ) : null}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <p className="muted-copy">This account is read only for your current Settings access.</p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mobile-access-list top-gap">
+              {accessTableRows.map(({ user, access }) => {
+                const rowKey = getAccessTableKey(user.id, access);
+                const draft = drafts[user.id] ?? buildDraft();
+                const projectRoleOptions = getProjectRoleOptions(viewer, user);
+                const assignableProjects = projects.filter((project) => project.canManageMembers && project.ownerId !== user.id);
+                const project = access ? projects.find((item) => item.id === access.projectId) : undefined;
+                const canManageThisAccess = access
+                  ? Boolean(project?.canManageMembers && !access.isOwner && projectRoleOptions.length)
+                  : Boolean(assignableProjects.length && projectRoleOptions.length);
+                const modules = access?.modules ?? draft.modules;
+
+                return (
+                  <article className="record-surface mobile-access-card" key={`mobile-${rowKey}`}>
+                    <div className="record-header">
+                      <div>
+                        <strong>{user.email}</strong>
+                        <p>{access?.projectName ?? "No project assigned"}</p>
+                      </div>
+                      {canManageThisAccess ? (
+                        <button className="secondary-button" onClick={() => handleAccessEdit(user, access)} type="button">
+                          {access ? "Edit" : "Assign"}
+                        </button>
+                      ) : (
+                        <span className="pill">{access?.isOwner ? "Owner" : "Read only"}</span>
+                      )}
+                    </div>
+                    <div className="access-module-strip top-gap">
+                      {MODULE_KEYS.slice(0, 5).map((moduleKey) => (
+                        <span className={cn("access-module-dot", modules[moduleKey] && "on")} key={`mobile-${rowKey}-${moduleKey}`}>
+                          {moduleKey === "site_intelligence" ? "AI" : formatSectionLabel(moduleKey).slice(0, 1)}
+                        </span>
+                      ))}
+                      <span className="muted-copy">{getEnabledModuleCount(modules)} of {MODULE_KEYS.length}</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         </>
       )}

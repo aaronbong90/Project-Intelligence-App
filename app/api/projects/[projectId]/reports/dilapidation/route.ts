@@ -63,6 +63,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
         completionChecklist: [],
         defectZones: [],
         defects: [],
+        aiSiteObservations: [],
+        drawingSheets: [],
+        drawingLinks: [],
         notifications: []
       };
     }

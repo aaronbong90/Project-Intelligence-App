@@ -1,11 +1,11 @@
 import { createFullModulePermissions, createModulePermissions, normalizeRole } from "@/lib/auth";
 import { getAdminViewerContext } from "@/lib/admin-access";
 import { demoAdminProjects, demoAdminUsers } from "@/lib/demo-data";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { AdminProjectSummary, AdminUserRecord, AppUserProfile, UserProjectAccess } from "@/types/app";
 
 function hasSupabaseEnv() {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 type ProfileRow = {
@@ -37,11 +37,40 @@ type MembershipRow = {
   can_financials: boolean;
   can_completion: boolean;
   can_defects: boolean;
+  can_site_intelligence: boolean;
 };
 
 function isMissingProfileDirectoryColumnsError(error: { message?: string | null } | null | undefined) {
   const message = error?.message ?? "";
   return message.includes("profiles.client_owner_id") || message.includes("profiles.created_by_user_id");
+}
+
+function createNoModulePermissions() {
+  return createModulePermissions({
+    overview: false,
+    contractor_submissions: false,
+    handover: false,
+    daily_reports: false,
+    weekly_reports: false,
+    financials: false,
+    completion: false,
+    defects: false,
+    site_intelligence: false
+  });
+}
+
+function createMembershipModulePermissions(membership: MembershipRow) {
+  return createModulePermissions({
+    overview: membership.can_overview,
+    contractor_submissions: membership.can_contractor_submissions,
+    handover: membership.can_handover,
+    daily_reports: membership.can_daily_reports,
+    weekly_reports: membership.can_weekly_reports,
+    financials: membership.can_financials,
+    completion: membership.can_completion,
+    defects: membership.can_defects,
+    site_intelligence: membership.can_site_intelligence
+  });
 }
 
 export async function getAdminAccessData(): Promise<{
@@ -75,9 +104,9 @@ export async function getAdminAccessData(): Promise<{
     };
   }
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const membershipSelect =
-    "id, project_id, user_id, email, role, can_overview, can_contractor_submissions, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects";
+    "id, project_id, user_id, email, role, can_overview, can_contractor_submissions, can_handover, can_daily_reports, can_weekly_reports, can_financials, can_completion, can_defects, can_site_intelligence";
   const profileSelect = "id, email, role, is_suspended, client_owner_id, created_by_user_id";
   const basicProfileSelect = "id, email, role, is_suspended";
 
@@ -172,6 +201,7 @@ export async function getAdminAccessData(): Promise<{
 
   const profileEmailById = new Map(safeProfiles.map((profile) => [profile.id, profile.email ?? ""]));
   const viewerMembershipRoleByProject = new Map(safeSelfMemberships.map((membership) => [membership.project_id, normalizeRole(membership.role)]));
+  const viewerMembershipByProject = new Map(safeSelfMemberships.map((membership) => [membership.project_id, membership]));
 
   const projectSummaries: AdminProjectSummary[] = safeProjects.map((project) => ({
     id: project.id,
@@ -179,7 +209,13 @@ export async function getAdminAccessData(): Promise<{
     ownerId: project.owner_id,
     ownerEmail: profileEmailById.get(project.owner_id) ?? "",
     canManageMembers:
-      viewer.role === "master_admin" || project.owner_id === viewer.id || viewerMembershipRoleByProject.get(project.id) === "client"
+      viewer.role === "master_admin" || project.owner_id === viewer.id || viewerMembershipRoleByProject.get(project.id) === "client",
+    manageableModules:
+      viewer.role === "master_admin" || project.owner_id === viewer.id
+        ? createFullModulePermissions()
+        : viewerMembershipByProject.has(project.id)
+          ? createMembershipModulePermissions(viewerMembershipByProject.get(project.id) as MembershipRow)
+          : createNoModulePermissions()
   }));
 
   const projectNameById = new Map(projectSummaries.map((project) => [project.id, project.name]));
@@ -214,16 +250,7 @@ export async function getAdminAccessData(): Promise<{
             projectId: membership.project_id,
             projectName: projectNameById.get(membership.project_id) ?? "Untitled project",
             role: normalizeRole(membership.role),
-            modules: createModulePermissions({
-              overview: membership.can_overview,
-              contractor_submissions: membership.can_contractor_submissions,
-              handover: membership.can_handover,
-              daily_reports: membership.can_daily_reports,
-              weekly_reports: membership.can_weekly_reports,
-              financials: membership.can_financials,
-              completion: membership.can_completion,
-              defects: membership.can_defects
-            }),
+            modules: createMembershipModulePermissions(membership),
             isOwner: false
           });
         });

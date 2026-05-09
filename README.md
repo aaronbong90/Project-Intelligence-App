@@ -1,4 +1,4 @@
-# Project Field Hub Pro
+# ProjectAxis
 
 Production-ready scaffold for a mobile-friendly multi-user construction project app built with:
 
@@ -145,7 +145,7 @@ If you want this app to live in its own repo, run these commands from this folde
 git init
 git checkout -b main
 git add .
-git commit -m "Initial Project Field Hub Pro commit"
+git commit -m "Initial ProjectAxis commit"
 git remote add origin https://github.com/<your-username>/<your-repo>.git
 git push -u origin main
 ```

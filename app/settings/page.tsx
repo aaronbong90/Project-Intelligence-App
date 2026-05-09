@@ -2,6 +2,8 @@ import { AdminShell } from "@/components/admin-shell";
 import { TopNav } from "@/components/top-nav";
 import { getAdminAccessData } from "@/lib/admin";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const { viewer, isAllowed, users, projects } = await getAdminAccessData();
   const isConfigured = Boolean(

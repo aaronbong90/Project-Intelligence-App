@@ -9,7 +9,8 @@ export const MODULE_KEYS: ModuleKey[] = [
   "weekly_reports",
   "financials",
   "completion",
-  "defects"
+  "defects",
+  "site_intelligence"
 ];
 
 export function normalizeRole(value?: string | null): UserRole {
@@ -63,6 +64,7 @@ export function createModulePermissions(overrides?: Partial<ModulePermissions>):
     financials: false,
     completion: false,
     defects: false,
+    site_intelligence: false,
     ...overrides
   };
 }
@@ -75,6 +77,7 @@ export function createFullModulePermissions(): ModulePermissions {
     weekly_reports: true,
     financials: true,
     completion: true,
-    defects: true
+    defects: true,
+    site_intelligence: true
   });
 }

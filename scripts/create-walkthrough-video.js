@@ -9,7 +9,7 @@ const screensDir = path.join(outputDir, "screens");
 const slidesDir = path.join(outputDir, "slides");
 const audioDir = path.join(outputDir, "audio");
 const segmentsDir = path.join(outputDir, "segments");
-const outputVideo = path.join(root, "docs", "project-field-hub-pro-walkthrough.mp4");
+const outputVideo = path.join(root, "docs", "projectaxis-walkthrough.mp4");
 const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
 const appUrl = process.env.APP_URL || "http://localhost:3001/dashboard";
 const endPauseSeconds = Number(process.env.SCENE_END_PAUSE_SECONDS || "0.65");
@@ -18,10 +18,10 @@ const syncToleranceSeconds = Number(process.env.SYNC_TOLERANCE_SECONDS || "0.1")
 const scenes = [
   {
     id: "01-opening",
-    title: "Project Field Hub Pro",
+    title: "ProjectAxis",
     caption: "A shared project dashboard for submissions, reports, finance, defects, and close-out.",
     narration:
-      "Welcome to Project Field Hub Pro. This dashboard keeps project records, submissions, reports, financial items, defects, and close-out tracking in one shared workspace.",
+      "Welcome to ProjectAxis. This dashboard keeps project records, submissions, reports, financial items, defects, and close-out tracking in one shared workspace.",
     capture: async (page) => {
       await page.goto(appUrl, { waitUntil: "networkidle" });
       await page.waitForTimeout(1000);
@@ -428,7 +428,7 @@ async function renderSlide(browser, scene, screenPath, slidePath) {
         </style>
       </head>
       <body>
-        <div class="brand">Project Field Hub Pro</div>
+        <div class="brand">ProjectAxis</div>
         <div class="frame"><img src="data:image/png;base64,${image}" alt=""></div>
         <div class="caption">
           <h1>${escapeHtml(scene.title)}</h1>

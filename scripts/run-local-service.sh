@@ -4,7 +4,7 @@ set -euo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-APP_DIR="/Users/aaronbongxianzhi/Documents/Playground/apps/project-field-hub-next"
+APP_DIR="/Users/aaronbongxianzhi/Desktop/Project Intelligence"
 LOG_DIR="$APP_DIR/.runtime"
 
 mkdir -p "$LOG_DIR"

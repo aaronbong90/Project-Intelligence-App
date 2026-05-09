@@ -3,13 +3,23 @@ import { TopNav } from "@/components/top-nav";
 
 export default function HomePage() {
   return (
-    <div className="site-shell">
+    <div className="site-shell home-site-shell">
       <TopNav />
-      <main className="landing-shell">
-        <section className="landing-hero">
+      <main className="landing-shell landing-shell-home">
+        <section className="landing-hero landing-hero-wallpaper">
           <div className="landing-copy">
-            <p className="eyebrow">Project Workspace</p>
-            <h2>Keep project records, reports, finance, and defects in one place.</h2>
+            <p className="landing-hero-pill">
+              <span aria-hidden="true" />
+              Blueprint intelligence workspace
+            </p>
+            <h2>
+              <span className="desktop-hero-title">Keep every project moving.</span>
+              <span className="mobile-hero-title">Keep projects moving.</span>
+            </h2>
+            <p className="landing-support">
+              ProjectAxis brings records, reports, finance, handover tracking, and defects into one clean
+              command workspace.
+            </p>
             <div className="landing-actions">
               <Link className="primary-button" href="/dashboard">
                 Open dashboard
@@ -19,30 +29,9 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
-
-          <div className="landing-preview panel-surface">
-            <div className="preview-badge">Live modules</div>
-            <div className="preview-grid">
-              <article>
-                <span>Timeline</span>
-                <strong>Countdown + milestones</strong>
-              </article>
-              <article>
-                <span>Handover</span>
-                <strong>Survey + defect logging</strong>
-              </article>
-              <article>
-                <span>Reports</span>
-                <strong>Daily + weekly updates</strong>
-              </article>
-              <article>
-                <span>Financials</span>
-                <strong>Quotations, invoices, VOs</strong>
-              </article>
-            </div>
-          </div>
         </section>
       </main>
+      <footer className="home-copyright-footer">© 2026 ProjectAxis. All rights reserved.</footer>
     </div>
   );
 }

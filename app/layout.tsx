@@ -4,8 +4,8 @@ import { ScrollRestoration } from "@/components/scroll-restoration";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Project Field Hub Pro",
-  description: "Multi-user construction project dashboard with handover, reporting, finance, and close-out workflows."
+  title: "ProjectAxis",
+  description: "Project intelligence for field teams, reporting, finance, handover, and close-out workflows."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

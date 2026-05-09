@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
-const SCROLL_KEY_PREFIX = "project-field-hub-scroll";
+const SCROLL_KEY_PREFIX = "projectaxis-scroll";
 
 export function ScrollRestoration() {
   const pathname = usePathname();

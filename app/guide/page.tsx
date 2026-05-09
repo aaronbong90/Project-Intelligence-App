@@ -78,7 +78,7 @@ export default function GuidePage() {
         <section className="hero-card">
           <div className="hero-copy-block">
             <p className="eyebrow">Help</p>
-            <h2>How to use Project Field Hub</h2>
+            <h2>How to use ProjectAxis</h2>
             <p className="hero-description">Quick guides, module tips, and answers to common questions.</p>
             <div className="landing-actions">
               <Link className="primary-button" href="/dashboard">

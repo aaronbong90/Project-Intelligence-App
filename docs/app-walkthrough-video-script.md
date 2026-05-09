@@ -1,4 +1,4 @@
-# Project Field Hub Pro Walkthrough Video
+# ProjectAxis Walkthrough Video
 
 Target length: 3 to 4 minutes
 
@@ -18,7 +18,7 @@ On screen:
 
 Voiceover:
 
-Welcome to Project Field Hub Pro. This dashboard keeps project records, submissions, reports, financial items, defects, and close-out tracking in one shared workspace. Everyone assigned to the same project can see the updates relevant to their access.
+Welcome to ProjectAxis. This dashboard keeps project records, submissions, reports, financial items, defects, and close-out tracking in one shared workspace. Everyone assigned to the same project can see the updates relevant to their access.
 
 ### 2. Switch Theme
 

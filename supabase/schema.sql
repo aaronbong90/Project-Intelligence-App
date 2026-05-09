@@ -92,12 +92,14 @@ create table if not exists public.project_members (
   can_financials boolean not null default false,
   can_completion boolean not null default false,
   can_defects boolean not null default false,
+  can_site_intelligence boolean not null default false,
   created_at timestamptz not null default now(),
   constraint project_members_role_check check (role in ('client', 'contractor', 'subcontractor', 'consultant')),
   constraint project_members_project_user_unique unique (project_id, user_id)
 );
 
 alter table public.project_members add column if not exists can_contractor_submissions boolean not null default false;
+alter table public.project_members add column if not exists can_site_intelligence boolean not null default false;
 alter table public.project_members drop constraint if exists project_members_role_check;
 alter table public.project_members
   add constraint project_members_role_check check (role in ('client', 'contractor', 'subcontractor', 'consultant'));
@@ -257,6 +259,12 @@ create table if not exists public.defects (
   title text not null,
   status text not null default 'open',
   details text,
+  follow_up_date date,
+  follow_up_reason text not null default '',
+  root_cause text not null default '',
+  responsible_trade text not null default '',
+  rectification_steps jsonb not null default '[]'::jsonb,
+  closure_checklist jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -281,6 +289,12 @@ end
 $$;
 
 alter table public.defects add column if not exists zone text;
+alter table public.defects add column if not exists root_cause text not null default '';
+alter table public.defects add column if not exists responsible_trade text not null default '';
+alter table public.defects add column if not exists rectification_steps jsonb not null default '[]'::jsonb;
+alter table public.defects add column if not exists closure_checklist jsonb not null default '[]'::jsonb;
+alter table public.defects add column if not exists follow_up_date date;
+alter table public.defects add column if not exists follow_up_reason text not null default '';
 
 create table if not exists public.attachments (
   id uuid primary key default gen_random_uuid(),
@@ -307,6 +321,256 @@ create table if not exists public.project_notifications (
 
 create index if not exists project_notifications_project_created_idx
 on public.project_notifications (project_id, created_at desc);
+
+create table if not exists public.ai_site_observations (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  created_by_user_id uuid references auth.users(id) on delete set null,
+  location text not null default '',
+  trade text not null default '',
+  image_path text not null,
+  ai_summary text not null default '',
+  detected_type text not null default 'unknown',
+  confidence numeric(5, 4) not null default 0,
+  status text not null default 'pending',
+  linked_record_type text,
+  linked_record_id uuid,
+  previous_observation_id uuid references public.ai_site_observations(id) on delete set null,
+  progress_status text not null default 'unknown',
+  progress_delta_summary text not null default '',
+  comparison_confidence numeric(5, 4) not null default 0,
+  recurrence_group_id uuid,
+  recurrence_count integer not null default 0,
+  recurrence_summary text not null default '',
+  is_recurring_issue boolean not null default false,
+  follow_up_date date,
+  follow_up_reason text not null default '',
+  root_cause text not null default '',
+  responsible_trade text not null default '',
+  rectification_steps jsonb not null default '[]'::jsonb,
+  closure_checklist jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint ai_site_observations_confidence_check check (confidence >= 0 and confidence <= 1),
+  constraint ai_site_observations_comparison_confidence_check check (comparison_confidence >= 0 and comparison_confidence <= 1),
+  constraint ai_site_observations_recurrence_count_check check (recurrence_count >= 0),
+  constraint ai_site_observations_status_check check (status in ('pending', 'reviewed', 'approved', 'converted', 'dismissed', 'failed')),
+  constraint ai_site_observations_progress_status_check check (
+    progress_status in (
+      'improved',
+      'unchanged',
+      'delayed',
+      'worsened',
+      'unknown'
+    )
+  ),
+  constraint ai_site_observations_linked_record_type_check check (
+    linked_record_type is null
+    or linked_record_type in ('defect', 'daily_report')
+  )
+);
+
+create index if not exists ai_site_observations_project_created_idx
+on public.ai_site_observations (project_id, created_at desc);
+
+create index if not exists ai_site_observations_location_trade_created_idx
+on public.ai_site_observations (project_id, location, trade, created_at desc);
+
+create index if not exists ai_site_observations_previous_idx
+on public.ai_site_observations (previous_observation_id);
+
+create index if not exists ai_site_observations_recurrence_group_idx
+on public.ai_site_observations (recurrence_group_id);
+
+create index if not exists ai_site_observations_recurring_project_idx
+on public.ai_site_observations (project_id, is_recurring_issue, created_at desc);
+
+do $$
+begin
+  alter table public.ai_site_observations
+    add column if not exists previous_observation_id uuid references public.ai_site_observations(id) on delete set null;
+
+  alter table public.ai_site_observations
+    add column if not exists progress_status text not null default 'unknown';
+
+  update public.ai_site_observations
+    set progress_status = case progress_status
+      when 'progress_detected' then 'improved'
+      when 'no_visible_change' then 'unchanged'
+      when 'possible_delay' then 'delayed'
+      when 'repeated_issue' then 'delayed'
+      when 'worsening_condition' then 'worsened'
+      else 'unknown'
+    end
+    where progress_status in (
+      'new_baseline',
+      'progress_detected',
+      'no_visible_change',
+      'possible_delay',
+      'repeated_issue',
+      'worsening_condition',
+      'comparison_unavailable'
+    );
+
+  alter table public.ai_site_observations
+    add column if not exists progress_delta_summary text not null default '';
+
+  alter table public.ai_site_observations
+    add column if not exists comparison_confidence numeric(5, 4) not null default 0;
+
+  alter table public.ai_site_observations
+    add column if not exists recurrence_group_id uuid;
+
+  alter table public.ai_site_observations
+    add column if not exists recurrence_count integer not null default 0;
+
+  alter table public.ai_site_observations
+    add column if not exists recurrence_summary text not null default '';
+
+  alter table public.ai_site_observations
+    add column if not exists is_recurring_issue boolean not null default false;
+
+  alter table public.ai_site_observations
+    add column if not exists root_cause text not null default '';
+
+  alter table public.ai_site_observations
+    add column if not exists responsible_trade text not null default '';
+
+  alter table public.ai_site_observations
+    add column if not exists rectification_steps jsonb not null default '[]'::jsonb;
+
+  alter table public.ai_site_observations
+    add column if not exists closure_checklist jsonb not null default '[]'::jsonb;
+
+  alter table public.ai_site_observations
+    add column if not exists follow_up_date date;
+
+  alter table public.ai_site_observations
+    add column if not exists follow_up_reason text not null default '';
+
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'ai_site_observations_status_check'
+  ) then
+    alter table public.ai_site_observations
+      drop constraint ai_site_observations_status_check;
+  end if;
+
+  alter table public.ai_site_observations
+    add constraint ai_site_observations_status_check
+    check (status in ('pending', 'reviewed', 'approved', 'converted', 'dismissed', 'failed'));
+
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'ai_site_observations_comparison_confidence_check'
+  ) then
+    alter table public.ai_site_observations
+      drop constraint ai_site_observations_comparison_confidence_check;
+  end if;
+
+  alter table public.ai_site_observations
+    add constraint ai_site_observations_comparison_confidence_check
+    check (comparison_confidence >= 0 and comparison_confidence <= 1);
+
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'ai_site_observations_recurrence_count_check'
+  ) then
+    alter table public.ai_site_observations
+      drop constraint ai_site_observations_recurrence_count_check;
+  end if;
+
+  alter table public.ai_site_observations
+    add constraint ai_site_observations_recurrence_count_check
+    check (recurrence_count >= 0);
+
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'ai_site_observations_progress_status_check'
+  ) then
+    alter table public.ai_site_observations
+      drop constraint ai_site_observations_progress_status_check;
+  end if;
+
+  alter table public.ai_site_observations
+    add constraint ai_site_observations_progress_status_check
+    check (
+      progress_status in (
+        'improved',
+        'unchanged',
+        'delayed',
+        'worsened',
+        'unknown'
+      )
+    );
+end
+$$;
+
+create table if not exists public.drawing_sheets (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  title text not null default '',
+  drawing_type text not null default 'design_drawing'
+    check (drawing_type in ('design_drawing', 'tender_drawing', 'shop_drawing', 'as_built_drawing')),
+  revision text not null default '',
+  discipline text not null default '',
+  sheet_number text not null default '',
+  file_path text not null unique,
+  ai_drawing_title text not null default '',
+  ai_discipline text not null default '',
+  ai_likely_zones jsonb not null default '[]'::jsonb,
+  ai_key_notes jsonb not null default '[]'::jsonb,
+  ai_risks jsonb not null default '[]'::jsonb,
+  ai_summarized_at timestamptz,
+  uploaded_by_user_id uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.drawing_sheets add column if not exists drawing_type text not null default 'design_drawing';
+alter table public.drawing_sheets drop constraint if exists drawing_sheets_drawing_type_check;
+alter table public.drawing_sheets add constraint drawing_sheets_drawing_type_check
+check (drawing_type in ('design_drawing', 'tender_drawing', 'shop_drawing', 'as_built_drawing'));
+alter table public.drawing_sheets add column if not exists ai_drawing_title text not null default '';
+alter table public.drawing_sheets add column if not exists ai_discipline text not null default '';
+alter table public.drawing_sheets add column if not exists ai_likely_zones jsonb not null default '[]'::jsonb;
+alter table public.drawing_sheets add column if not exists ai_key_notes jsonb not null default '[]'::jsonb;
+alter table public.drawing_sheets add column if not exists ai_risks jsonb not null default '[]'::jsonb;
+alter table public.drawing_sheets add column if not exists ai_summarized_at timestamptz;
+
+create index if not exists drawing_sheets_project_created_idx
+on public.drawing_sheets (project_id, created_at desc);
+
+create index if not exists drawing_sheets_project_sheet_idx
+on public.drawing_sheets (project_id, sheet_number, revision);
+
+create table if not exists public.drawing_links (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  drawing_sheet_id uuid not null references public.drawing_sheets(id) on delete cascade,
+  record_type text not null,
+  record_id uuid not null,
+  x_coordinate numeric(8, 6),
+  y_coordinate numeric(8, 6),
+  markup_label text not null default '',
+  notes text not null default '',
+  created_by_user_id uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint drawing_links_record_type_check check (record_type in ('ai_site_observation', 'defect', 'daily_report')),
+  constraint drawing_links_x_coordinate_check check (x_coordinate is null or (x_coordinate >= 0 and x_coordinate <= 1)),
+  constraint drawing_links_y_coordinate_check check (y_coordinate is null or (y_coordinate >= 0 and y_coordinate <= 1))
+);
+
+create index if not exists drawing_links_project_created_idx
+on public.drawing_links (project_id, created_at desc);
+
+create index if not exists drawing_links_record_idx
+on public.drawing_links (record_type, record_id);
+
+create index if not exists drawing_links_sheet_idx
+on public.drawing_links (drawing_sheet_id);
 
 create or replace function public.is_active_user(check_user_id uuid default auth.uid())
 returns boolean
@@ -493,6 +757,7 @@ as $$
             or (module_key = 'financials' and project_members.can_financials)
             or (module_key = 'completion' and project_members.can_completion)
             or (module_key = 'defects' and project_members.can_defects)
+            or (module_key = 'site_intelligence' and project_members.can_site_intelligence)
           )
       )
   );
@@ -671,6 +936,7 @@ as $$
     when 'weekly_report' then 'weekly_reports'
     when 'financial_record' then 'financials'
     when 'defect' then 'defects'
+    when 'ai_site_observation' then 'site_intelligence'
     else 'overview'
   end;
 $$;
@@ -1287,6 +1553,9 @@ alter table public.defect_zones enable row level security;
 alter table public.defects enable row level security;
 alter table public.attachments enable row level security;
 alter table public.project_notifications enable row level security;
+alter table public.ai_site_observations enable row level security;
+alter table public.drawing_sheets enable row level security;
+alter table public.drawing_links enable row level security;
 
 drop policy if exists "profiles_select" on public.profiles;
 drop policy if exists "profiles_update_by_admin" on public.profiles;
@@ -1330,6 +1599,14 @@ drop policy if exists "defects_manage" on public.defects;
 drop policy if exists "attachments_manage" on public.attachments;
 drop policy if exists "project_notifications_select" on public.project_notifications;
 drop policy if exists "project_notifications_insert" on public.project_notifications;
+drop policy if exists "ai_site_observations_select" on public.ai_site_observations;
+drop policy if exists "ai_site_observations_insert" on public.ai_site_observations;
+drop policy if exists "ai_site_observations_update" on public.ai_site_observations;
+drop policy if exists "ai_site_observations_delete" on public.ai_site_observations;
+drop policy if exists "drawing_sheets_select" on public.drawing_sheets;
+drop policy if exists "drawing_sheets_manage" on public.drawing_sheets;
+drop policy if exists "drawing_links_select" on public.drawing_links;
+drop policy if exists "drawing_links_manage" on public.drawing_links;
 drop policy if exists "project_files_insert" on storage.objects;
 drop policy if exists "project_files_update" on storage.objects;
 drop policy if exists "project_files_delete" on storage.objects;
@@ -1540,6 +1817,60 @@ on public.project_notifications for insert
 with check (
   public.has_project_access(project_id, auth.uid())
   and actor_user_id = auth.uid()
+);
+
+create policy "ai_site_observations_select"
+on public.ai_site_observations for select
+using (public.has_module_access(project_id, 'site_intelligence', auth.uid()));
+
+create policy "ai_site_observations_insert"
+on public.ai_site_observations for insert
+with check (
+  public.has_module_access(project_id, 'site_intelligence', auth.uid())
+  and created_by_user_id = auth.uid()
+);
+
+create policy "ai_site_observations_update"
+on public.ai_site_observations for update
+using (public.has_module_access(project_id, 'site_intelligence', auth.uid()))
+with check (public.has_module_access(project_id, 'site_intelligence', auth.uid()));
+
+create policy "ai_site_observations_delete"
+on public.ai_site_observations for delete
+using (public.has_module_access(project_id, 'site_intelligence', auth.uid()));
+
+create policy "drawing_sheets_select"
+on public.drawing_sheets for select
+using (public.has_project_access(project_id, auth.uid()));
+
+create policy "drawing_sheets_manage"
+on public.drawing_sheets for all
+using (public.has_project_access(project_id, auth.uid()))
+with check (public.has_project_access(project_id, auth.uid()));
+
+create policy "drawing_links_select"
+on public.drawing_links for select
+using (public.has_project_access(project_id, auth.uid()));
+
+create policy "drawing_links_manage"
+on public.drawing_links for all
+using (
+  public.has_project_access(project_id, auth.uid())
+  and exists (
+    select 1
+    from public.drawing_sheets
+    where drawing_sheets.id = drawing_links.drawing_sheet_id
+      and drawing_sheets.project_id = drawing_links.project_id
+  )
+)
+with check (
+  public.has_project_access(project_id, auth.uid())
+  and exists (
+    select 1
+    from public.drawing_sheets
+    where drawing_sheets.id = drawing_links.drawing_sheet_id
+      and drawing_sheets.project_id = drawing_links.project_id
+  )
 );
 
 insert into storage.buckets (id, name, public)

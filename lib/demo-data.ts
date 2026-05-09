@@ -319,9 +319,31 @@ export const demoProject: ProjectBundle = {
       title: "Silicone joint gap at pantry backsplash",
       status: "open",
       details: "Observed during internal pre-handover inspection. Requires reseal.",
-      attachments: []
+      followUpDate: null,
+      followUpReason: "",
+      rectification: {
+        rootCause: "Likely incomplete joint preparation or sealant application at the backsplash edge.",
+        responsibleTrade: "Architectural / finishing",
+        rectificationSteps: [
+          "Remove loose or incomplete sealant from the affected joint.",
+          "Clean and prepare the backing surface before resealing.",
+          "Apply suitable silicone sealant with a consistent joint profile.",
+          "Inspect the repaired joint after curing."
+        ],
+        closureChecklist: [
+          "Joint cleaned and prepared.",
+          "Sealant applied evenly.",
+          "Adjacent finishes protected and cleaned.",
+          "Final inspection photo captured."
+        ]
+      },
+      attachments: [],
+      createdAt: "2026-04-16T09:00:00+08:00"
     }
   ],
+  aiSiteObservations: [],
+  drawingSheets: [],
+  drawingLinks: [],
   notifications: [
     {
       id: "notice-1",
@@ -354,7 +376,8 @@ export const demoAdminProjects: AdminProjectSummary[] = [
     name: demoProject.overview.name,
     ownerId: "user-master-admin",
     ownerEmail: "aaronbong90@gmail.com",
-    canManageMembers: true
+    canManageMembers: true,
+    manageableModules: createFullModulePermissions()
   }
 ];
 

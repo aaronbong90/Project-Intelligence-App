@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type ThemeMode = "light" | "dark";
 
-const THEME_STORAGE_KEY = "project-field-hub-theme";
+const THEME_STORAGE_KEY = "projectaxis-theme";
 
 function getInitialTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
@@ -40,7 +40,10 @@ export function ThemeToggle() {
 
   return (
     <button className="ghost-button top-nav-utility-button" onClick={handleToggle} type="button">
-      {theme === "dark" ? "Light mode" : "Dark mode"}
+      <span aria-hidden="true" className="nav-symbol nav-symbol-theme">
+        {"\u25d0"}
+      </span>
+      Mode
     </button>
   );
 }

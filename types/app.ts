@@ -3,6 +3,7 @@ export type FinancialStatus = "pending" | "submitted" | "approved" | "rejected" 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type CompletionStatus = "open" | "ready" | "completed";
 export type DefectStatus = "open" | "in_progress" | "closed";
+export type DrawingType = "design_drawing" | "tender_drawing" | "shop_drawing" | "as_built_drawing";
 export type UserRole = "master_admin" | "client" | "contractor" | "subcontractor" | "consultant";
 export type RecordSectionType =
   | "contractor_submission"
@@ -21,7 +22,8 @@ export type ModuleKey =
   | "weekly_reports"
   | "financials"
   | "completion"
-  | "defects";
+  | "defects"
+  | "site_intelligence";
 
 export type ModulePermissions = Record<ModuleKey, boolean>;
 
@@ -200,13 +202,97 @@ export type DefectZone = {
   name: string;
 };
 
+export type RectificationAssistant = {
+  rootCause: string;
+  responsibleTrade: string;
+  rectificationSteps: string[];
+  closureChecklist: string[];
+};
+
 export type DefectRecord = {
   id: string;
   zone: string;
   title: string;
   status: DefectStatus;
   details: string;
+  followUpDate: string | null;
+  followUpReason: string;
+  rectification: RectificationAssistant;
   attachments: AttachmentRecord[];
+  createdAt: string;
+};
+
+export type AiSiteObservationStatus = "pending" | "reviewed" | "approved" | "converted" | "dismissed" | "failed";
+
+export type AiProgressStatus =
+  | "improved"
+  | "unchanged"
+  | "delayed"
+  | "worsened"
+  | "unknown";
+
+export type AiSiteObservation = {
+  id: string;
+  projectId: string;
+  createdByUserId: string | null;
+  location: string;
+  trade: string;
+  imagePath: string;
+  imagePublicUrl?: string | null;
+  aiSummary: string;
+  detectedType: string;
+  confidence: number;
+  status: AiSiteObservationStatus;
+  linkedRecordType: "defect" | "daily_report" | null;
+  linkedRecordId: string | null;
+  previousObservationId: string | null;
+  progressStatus: AiProgressStatus;
+  progressDeltaSummary: string;
+  comparisonConfidence: number;
+  recurrenceGroupId: string | null;
+  recurrenceCount: number;
+  recurrenceSummary: string;
+  isRecurringIssue: boolean;
+  followUpDate: string | null;
+  followUpReason: string;
+  rectification: RectificationAssistant;
+  createdAt: string;
+};
+
+export type DrawingLinkRecordType = "ai_site_observation" | "defect" | "daily_report";
+
+export type DrawingSheet = {
+  id: string;
+  projectId: string;
+  title: string;
+  drawingType: DrawingType;
+  revision: string;
+  discipline: string;
+  sheetNumber: string;
+  filePath: string;
+  filePublicUrl?: string | null;
+  aiDrawingTitle: string;
+  aiDiscipline: string;
+  aiLikelyZones: string[];
+  aiKeyNotes: string[];
+  aiRisks: string[];
+  aiSummarizedAt: string | null;
+  uploadedByUserId: string | null;
+  createdAt: string;
+};
+
+export type DrawingLink = {
+  id: string;
+  projectId: string;
+  drawingSheetId: string;
+  recordType: DrawingLinkRecordType;
+  recordId: string;
+  xCoordinate: number | null;
+  yCoordinate: number | null;
+  markupLabel: string;
+  notes: string;
+  createdByUserId: string | null;
+  createdAt: string;
 };
 
 export type ProjectNotification = {
@@ -237,6 +323,9 @@ export type ProjectBundle = {
   completionChecklist: CompletionChecklistItem[];
   defectZones: DefectZone[];
   defects: DefectRecord[];
+  aiSiteObservations: AiSiteObservation[];
+  drawingSheets: DrawingSheet[];
+  drawingLinks: DrawingLink[];
   notifications: ProjectNotification[];
 };
 
@@ -246,6 +335,7 @@ export type AdminProjectSummary = {
   ownerId: string;
   ownerEmail: string;
   canManageMembers: boolean;
+  manageableModules: ModulePermissions;
 };
 
 export type UserProjectAccess = {
