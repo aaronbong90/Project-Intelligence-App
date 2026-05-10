@@ -4,10 +4,14 @@ export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type CompletionStatus = "open" | "ready" | "completed";
 export type DefectStatus = "open" | "in_progress" | "closed";
 export type DrawingType = "design_drawing" | "tender_drawing" | "shop_drawing" | "as_built_drawing";
+export type ProjectSetupPhase = "site_survey" | "due_diligence" | "design" | "tender" | "award";
+export type ProjectSetupStatus = "not_started" | "in_progress" | "blocked" | "ready" | "closed";
+export type ProjectSetupPriority = "normal" | "high" | "urgent";
 export type UserRole = "master_admin" | "client" | "contractor" | "subcontractor" | "consultant";
 export type RecordSectionType =
   | "contractor_submission"
   | "consultant_submission"
+  | "project_setup_record"
   | "survey_item"
   | "daily_report"
   | "weekly_report"
@@ -94,6 +98,20 @@ export type Milestone = {
   id: string;
   title: string;
   dueDate: string;
+};
+
+export type ProjectSetupRecord = {
+  id: string;
+  phase: ProjectSetupPhase;
+  category: string;
+  title: string;
+  owner: string;
+  status: ProjectSetupStatus;
+  priority: ProjectSetupPriority;
+  dueDate: string | null;
+  notes: string;
+  attachments: AttachmentRecord[];
+  createdAt: string;
 };
 
 export type SurveyItem = {
@@ -314,6 +332,7 @@ export type ProjectBundle = {
   projectContractors: ProjectContractor[];
   projectConsultants: ProjectConsultant[];
   milestones: Milestone[];
+  projectSetupRecords: ProjectSetupRecord[];
   contractorSubmissions: ContractorSubmission[];
   consultantSubmissions: ConsultantSubmission[];
   surveyItems: SurveyItem[];

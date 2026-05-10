@@ -110,6 +110,47 @@ export const demoProject: ProjectBundle = {
     { id: "m2", title: "Authority submission", dueDate: "2026-04-22" },
     { id: "m3", title: "Practical completion", dueDate: "2026-06-12" }
   ],
+  projectSetupRecords: [
+    {
+      id: "setup-1",
+      phase: "site_survey",
+      category: "Existing drawings",
+      title: "Collect landlord base drawings and service schematics",
+      owner: "Project team",
+      status: "in_progress",
+      priority: "high",
+      dueDate: "2026-03-18",
+      notes: "Confirm architectural, ACMV, electrical, plumbing, and fire protection references before test-fit.",
+      attachments: [],
+      createdAt: "2026-03-10T09:00:00+08:00"
+    },
+    {
+      id: "setup-2",
+      phase: "due_diligence",
+      category: "Authority",
+      title: "Confirm landlord and authority submission pathway",
+      owner: "Consultant",
+      status: "ready",
+      priority: "normal",
+      dueDate: "2026-03-22",
+      notes: "Track landlord fit-out rules, fire safety implications, and submission assumptions before tender.",
+      attachments: [],
+      createdAt: "2026-03-12T10:00:00+08:00"
+    },
+    {
+      id: "setup-3",
+      phase: "tender",
+      category: "RFP package",
+      title: "Prepare main contractor tender package",
+      owner: "Client",
+      status: "not_started",
+      priority: "urgent",
+      dueDate: "2026-04-01",
+      notes: "Include cover note, scope, BQ, drawings, landlord guide, PTW, and risk-assessment forms.",
+      attachments: [],
+      createdAt: "2026-03-14T11:00:00+08:00"
+    }
+  ],
   contractorSubmissions: [
     {
       id: "cs1",

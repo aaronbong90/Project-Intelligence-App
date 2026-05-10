@@ -53,6 +53,9 @@ import type {
   FinancialStatus,
   ModuleKey,
   ModulePermissions,
+  ProjectSetupPhase,
+  ProjectSetupPriority,
+  ProjectSetupStatus,
   ProjectMember,
   ProjectBundle,
   ProjectNotification,
@@ -98,6 +101,91 @@ const DRAWING_TYPE_OPTIONS: Array<{ value: DrawingType; label: string }> = [
   { value: "tender_drawing", label: "Tender Drawing" },
   { value: "shop_drawing", label: "Shop Drawing" },
   { value: "as_built_drawing", label: "As Built Drawing" }
+];
+
+type ProjectSetupPanelKey =
+  | "project_setup_site_survey"
+  | "project_setup_due_diligence"
+  | "project_setup_design"
+  | "project_setup_tender"
+  | "project_setup_award";
+
+type ProjectSetupPhaseEntry = {
+  key: ProjectSetupPanelKey;
+  phase: ProjectSetupPhase;
+  label: string;
+  href: string;
+  focus: string;
+  categories: string[];
+  guide: string[];
+  deliverables: string[];
+};
+
+const PROJECT_SETUP_PHASES: ProjectSetupPhaseEntry[] = [
+  {
+    key: "project_setup_site_survey",
+    phase: "site_survey",
+    label: "Site Survey",
+    href: "#site-survey",
+    focus: "Capture existing site facts, base drawings, photos, restrictions, and survey gaps before design starts.",
+    categories: ["Existing drawings", "Measured survey", "Site photos", "Landlord rules", "Utility constraints"],
+    guide: ["Confirm received drawings and photos.", "Record missing site information.", "Flag landlord or building restrictions early."],
+    deliverables: ["Site information register", "Photo and video notes", "Missing-information tracker"]
+  },
+  {
+    key: "project_setup_due_diligence",
+    phase: "due_diligence",
+    label: "Due Diligence",
+    href: "#due-diligence",
+    focus: "Screen compliance, authority, landlord, service capacity, and permit risks before committing scope or budget.",
+    categories: ["Compliance", "Authority", "Landlord", "Services capacity", "Risk item"],
+    guide: ["Check authority pathway.", "Review base-building service limits.", "Capture unresolved compliance assumptions."],
+    deliverables: ["Due-diligence matrix", "Authority tracker", "Risk and assumptions register"]
+  },
+  {
+    key: "project_setup_design",
+    phase: "design",
+    label: "Design",
+    href: "#design",
+    focus: "Move from brief to test-fit, design options, consultant issue, and drawing coordination.",
+    categories: ["Brief", "Test fit", "Design option", "Consultant issue", "Design risk"],
+    guide: ["Confirm business brief and occupancy needs.", "Track test-fit options and constraints.", "Capture consultant comments before tender."],
+    deliverables: ["Project brief", "Preliminary design checklist", "Design issue register"]
+  },
+  {
+    key: "project_setup_tender",
+    phase: "tender",
+    label: "Tender",
+    href: "#tender",
+    focus: "Build the tender pack, track bidders, compare scope gaps, and prepare clarification actions.",
+    categories: ["RFP package", "BQ", "Scope gap", "Clarification", "Bid comparison"],
+    guide: ["Check drawing and scope completeness.", "Log dangerous exclusions.", "Normalize bidders before recommendation."],
+    deliverables: ["Tender register", "Clarification tracker", "Bid comparison table"]
+  },
+  {
+    key: "project_setup_award",
+    phase: "award",
+    label: "Award",
+    href: "#award",
+    focus: "Close negotiation, issue recommendation, prepare LOA package, and capture handover-to-construction actions.",
+    categories: ["Recommendation", "Negotiation", "LOA", "Contract", "Handover action"],
+    guide: ["Confirm final scope and exclusions.", "Record award recommendation basis.", "Prepare construction handover actions."],
+    deliverables: ["Award recommendation", "LOA tracker", "Construction handover checklist"]
+  }
+];
+
+const PROJECT_SETUP_STATUS_OPTIONS: Array<{ value: ProjectSetupStatus; label: string }> = [
+  { value: "not_started", label: "Not started" },
+  { value: "in_progress", label: "In progress" },
+  { value: "blocked", label: "Blocked" },
+  { value: "ready", label: "Ready" },
+  { value: "closed", label: "Closed" }
+];
+
+const PROJECT_SETUP_PRIORITY_OPTIONS: Array<{ value: ProjectSetupPriority; label: string }> = [
+  { value: "normal", label: "Normal" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" }
 ];
 
 type ContractorSubmissionDraftItem = {
@@ -622,6 +710,7 @@ function emptyProject(name = ""): ProjectBundle {
     projectContractors: [],
     projectConsultants: [],
     milestones: [],
+    projectSetupRecords: [],
     contractorSubmissions: [],
     consultantSubmissions: [],
     surveyItems: [],
@@ -639,7 +728,13 @@ function emptyProject(name = ""): ProjectBundle {
 }
 
 function getUploadModeForSection(sectionType: RecordSectionType): FreePilotUploadMode {
-  if (sectionType === "contractor_submission" || sectionType === "consultant_submission" || sectionType === "weekly_report" || sectionType === "financial_record") {
+  if (
+    sectionType === "contractor_submission" ||
+    sectionType === "consultant_submission" ||
+    sectionType === "project_setup_record" ||
+    sectionType === "weekly_report" ||
+    sectionType === "financial_record"
+  ) {
     return "mixed";
   }
 
@@ -787,6 +882,58 @@ function buildProjectConsultantFromRow(data: Record<string, unknown>): ProjectBu
       ? data.trades.filter((trade): trade is ConsultantTrade => typeof trade === "string")
       : []
   };
+}
+
+function normalizeProjectSetupPhase(value: unknown): ProjectSetupPhase {
+  if (value === "due_diligence" || value === "design" || value === "tender" || value === "award" || value === "site_survey") {
+    return value;
+  }
+
+  return "site_survey";
+}
+
+function normalizeProjectSetupStatus(value: unknown): ProjectSetupStatus {
+  if (value === "in_progress" || value === "blocked" || value === "ready" || value === "closed" || value === "not_started") {
+    return value;
+  }
+
+  return "not_started";
+}
+
+function normalizeProjectSetupPriority(value: unknown): ProjectSetupPriority {
+  if (value === "high" || value === "urgent" || value === "normal") {
+    return value;
+  }
+
+  return "normal";
+}
+
+function buildProjectSetupRecordFromRow(
+  data: Record<string, unknown>,
+  attachments: AttachmentRecord[] = []
+): ProjectBundle["projectSetupRecords"][number] {
+  return {
+    id: String(data.id),
+    phase: normalizeProjectSetupPhase(data.phase),
+    category: String(data.category ?? ""),
+    title: String(data.title ?? ""),
+    owner: String(data.owner ?? ""),
+    status: normalizeProjectSetupStatus(data.status),
+    priority: normalizeProjectSetupPriority(data.priority),
+    dueDate: typeof data.due_date === "string" && data.due_date ? data.due_date : null,
+    notes: String(data.notes ?? ""),
+    attachments,
+    createdAt: String(data.created_at ?? "")
+  };
+}
+
+function sortProjectSetupRecords(records: ProjectBundle["projectSetupRecords"]) {
+  return [...records].sort((left, right) => {
+    const leftDate = left.dueDate || "9999-12-31";
+    const rightDate = right.dueDate || "9999-12-31";
+    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+    return left.title.localeCompare(right.title);
+  });
 }
 
 function sortProjectContractors(contractors: ProjectBundle["projectContractors"]) {
@@ -1015,6 +1162,12 @@ function DefectStatusPill({ status }: { status: DefectStatus }) {
   return <TonePill tone={tone}>{formatSectionLabel(status)}</TonePill>;
 }
 
+function ProjectSetupStatusPill({ status }: { status: ProjectSetupStatus }) {
+  const tone = status === "blocked" ? "rejected" : status === "ready" || status === "closed" ? "approved" : "pending";
+  const label = PROJECT_SETUP_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? formatSectionLabel(status);
+  return <TonePill tone={tone}>{label}</TonePill>;
+}
+
 function RiskLevelPill({ level }: { level: RiskLevel }) {
   return <span className={cn("pill", "risk-level-pill", `risk-level-${level}`)}>{formatSectionLabel(level)}</span>;
 }
@@ -1042,6 +1195,7 @@ type ExportSheet = {
 };
 type ExportFormat = "csv" | "pdf";
 type ContractorSubmissionStatusFilter = ApprovalStatus | "all";
+type ProjectSetupStatusFilter = ProjectSetupStatus | "all";
 type SurveyStatusFilter = ChecklistStatus | "all";
 type FinancialStatusFilter = FinancialStatus | "all";
 type FinancialTypeFilter = ProjectBundle["financialRecords"][number]["documentType"] | "all";
@@ -1134,6 +1288,22 @@ function isIsoDateInRange(value: string, from: string, to: string) {
   return true;
 }
 
+function isProjectSetupPanelKey(key: DashboardPanelKey): key is ProjectSetupPanelKey {
+  return PROJECT_SETUP_PHASES.some((phase) => phase.key === key);
+}
+
+function getProjectSetupCreateKey(phase: ProjectSetupPhase) {
+  return `project-setup-${phase}`;
+}
+
+function getProjectSetupPhaseLabel(phase: ProjectSetupPhase) {
+  return PROJECT_SETUP_PHASES.find((entry) => entry.phase === phase)?.label ?? formatSectionLabel(phase);
+}
+
+function getProjectSetupPriorityLabel(priority: ProjectSetupPriority) {
+  return PROJECT_SETUP_PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? formatSectionLabel(priority);
+}
+
 function getDrawingTypeLabel(value: DrawingType) {
   return DRAWING_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? formatSectionLabel(value);
 }
@@ -1193,6 +1363,21 @@ function buildContractorSubmissionExportRows(
       "Attachment Links": buildAttachmentLinks(submission.attachments)
     }));
   });
+}
+
+function buildProjectSetupExportRows(records: ProjectBundle["projectSetupRecords"]): ExportRow[] {
+  return records.map((record) => ({
+    Phase: getProjectSetupPhaseLabel(record.phase),
+    Category: record.category,
+    Item: record.title,
+    Owner: record.owner,
+    Status: PROJECT_SETUP_STATUS_OPTIONS.find((option) => option.value === record.status)?.label ?? formatSectionLabel(record.status),
+    Priority: getProjectSetupPriorityLabel(record.priority),
+    "Due Date": record.dueDate,
+    Notes: record.notes,
+    Attachments: buildAttachmentNames(record.attachments),
+    "Attachment Links": buildAttachmentLinks(record.attachments)
+  }));
 }
 
 function escapeCsvCell(value: ExportCellValue) {
@@ -1905,7 +2090,24 @@ type Props = {
   viewer: AppUserProfile | null;
 };
 
-type DashboardPanelKey = ModuleKey | "drawing_register" | "ai_insights" | "access_control";
+type DashboardPanelKey = ModuleKey | ProjectSetupPanelKey | "drawing_register" | "ai_insights" | "access_control";
+type DashboardSectorKey = "project_setup" | "project_delivery";
+type DashboardPanelEntry = {
+  key: DashboardPanelKey;
+  label: string;
+  href: string;
+  sector: DashboardSectorKey;
+};
+
+const DASHBOARD_SECTOR_OPTIONS: Array<{ key: DashboardSectorKey; label: string }> = [
+  { key: "project_setup", label: "Project Setup" },
+  { key: "project_delivery", label: "Project Delivery" }
+];
+
+function getDashboardSectorLabel(sector: DashboardSectorKey) {
+  return DASHBOARD_SECTOR_OPTIONS.find((option) => option.key === sector)?.label ?? "Dashboard";
+}
+
 type OverviewEditTarget =
   | { kind: "contractor"; id: string }
   | { kind: "consultant"; id: string }
@@ -1916,6 +2118,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   const [projects, setProjects] = useState<ProjectBundle[]>(initialProjects);
   const [activeProjectId, setActiveProjectId] = useState<string>(initialProjects[0]?.overview.id ?? "");
   const [activePanelKey, setActivePanelKey] = useState<DashboardPanelKey>("overview");
+  const [activeDashboardSector, setActiveDashboardSector] = useState<DashboardSectorKey>("project_delivery");
   const [financialReviewNotes, setFinancialReviewNotes] = useState<Record<string, string>>({});
   const [contractorSubmissionReviewNotes, setContractorSubmissionReviewNotes] = useState<Record<string, string>>({});
   const [contractorSubmissionReviewErrors, setContractorSubmissionReviewErrors] = useState<Record<string, string>>({});
@@ -1925,6 +2128,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   const [editingDailyReportId, setEditingDailyReportId] = useState<string | null>(null);
   const [openCreatePanelKey, setOpenCreatePanelKey] = useState<string | null>(null);
   const [overviewEditTarget, setOverviewEditTarget] = useState<OverviewEditTarget>(null);
+  const [overviewActionMenuKey, setOverviewActionMenuKey] = useState<string | null>(null);
   const [isMobileModuleListOpen, setIsMobileModuleListOpen] = useState(false);
   const [isMobileCreateMenuOpen, setIsMobileCreateMenuOpen] = useState(false);
   const [openAiAssistantKey, setOpenAiAssistantKey] = useState<DashboardPanelKey | null>(null);
@@ -1936,6 +2140,12 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     useState<ContractorSubmissionStatusFilter>("all");
   const [contractorSubmissionDateFrom, setContractorSubmissionDateFrom] = useState("");
   const [contractorSubmissionDateTo, setContractorSubmissionDateTo] = useState("");
+  const [projectSetupStatusFilter, setProjectSetupStatusFilter] = useState<ProjectSetupStatusFilter>("all");
+  const [projectSetupDateFrom, setProjectSetupDateFrom] = useState("");
+  const [projectSetupDateTo, setProjectSetupDateTo] = useState("");
+  const [projectSetupSearchFilter, setProjectSetupSearchFilter] = useState("");
+  const [selectedProjectSetupRecordId, setSelectedProjectSetupRecordId] = useState<string | null>(null);
+  const [editingProjectSetupRecordId, setEditingProjectSetupRecordId] = useState<string | null>(null);
   const [surveyStatusFilter, setSurveyStatusFilter] = useState<SurveyStatusFilter>("all");
   const [dailyReportDateFrom, setDailyReportDateFrom] = useState("");
   const [dailyReportDateTo, setDailyReportDateTo] = useState("");
@@ -2018,6 +2228,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setOpenAiAssistantKey(null);
     setOpenFilterPanelKey(null);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
     setOpenCreatePanelKey((current) => (current === key ? null : key));
   };
 
@@ -2031,6 +2242,9 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setIsContractorDocumentExportMode(false);
     setSelectedContractorDocumentIds([]);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
+    setSelectedProjectSetupRecordId(null);
+    setEditingProjectSetupRecordId(null);
   }, [activePanelKey, activeProjectId]);
 
   const isSuspended = viewer?.isSuspended ?? false;
@@ -2119,6 +2333,25 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   );
   const allVisibleContractorDocumentsSelected =
     visibleContractorSubmissions.length > 0 && selectedVisibleContractorDocumentIds.length === visibleContractorSubmissions.length;
+  function getVisibleProjectSetupRecords(phase: ProjectSetupPhase) {
+    const query = projectSetupSearchFilter.trim().toLowerCase();
+
+    return sortProjectSetupRecords(
+      activeProject.projectSetupRecords.filter((record) => {
+        if (record.phase !== phase) return false;
+        if (projectSetupStatusFilter !== "all" && record.status !== projectSetupStatusFilter) return false;
+        if (projectSetupDateFrom && (!record.dueDate || record.dueDate < projectSetupDateFrom)) return false;
+        if (projectSetupDateTo && (!record.dueDate || record.dueDate > projectSetupDateTo)) return false;
+
+        if (query) {
+          const haystack = [record.title, record.category, record.owner, record.notes].join(" ").toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+
+        return true;
+      })
+    );
+  }
   const visibleSurveyItems = useMemo(() => {
     if (surveyStatusFilter === "all") {
       return activeProject.surveyItems;
@@ -2494,6 +2727,17 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   ] satisfies Array<{ key: ModuleKey; label: string; href: string }>;
 
   const enabledModuleEntries = visibleModuleEntries.filter((entry) => moduleAccess[entry.key]);
+  const overviewPanelEntry = enabledModuleEntries.find((entry) => entry.key === "overview");
+  const deliveryModuleEntries = enabledModuleEntries.filter((entry) => entry.key !== "overview");
+  const projectSetupPanelEntries =
+    moduleAccess.overview && activeProject.overview.id
+      ? PROJECT_SETUP_PHASES.map((phase) => ({
+          key: phase.key,
+          label: phase.label,
+          href: phase.href,
+          sector: "project_setup" as const
+        }))
+      : [];
   const drawingPanelEntries = activeProject.overview.id
     ? ([{ key: "drawing_register", label: "Drawing Register", href: "#drawing-register" }] satisfies Array<{
         key: Extract<DashboardPanelKey, "drawing_register">;
@@ -2508,19 +2752,30 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
         href: string;
       }>)
     : [];
-  const basePanelEntries = [...enabledModuleEntries, ...drawingPanelEntries, ...insightPanelEntries] satisfies Array<{
-    key: DashboardPanelKey;
-    label: string;
-    href: string;
-  }>;
+  const projectDeliveryPanelEntries = [
+    ...(overviewPanelEntry ? [{ ...overviewPanelEntry, sector: "project_delivery" as const }] : []),
+    ...deliveryModuleEntries.map((entry) => ({ ...entry, sector: "project_delivery" as const })),
+    ...drawingPanelEntries.map((entry) => ({ ...entry, sector: "project_delivery" as const })),
+    ...insightPanelEntries.map((entry) => ({ ...entry, sector: "project_delivery" as const }))
+  ] satisfies DashboardPanelEntry[];
+  const basePanelEntries = [...projectDeliveryPanelEntries, ...projectSetupPanelEntries] satisfies DashboardPanelEntry[];
   const panelEntries = (
     viewer?.role === "master_admin" && activeProject.overview.id
-      ? [...basePanelEntries, { key: "access_control", label: "Access Control", href: "#access-control" }]
+      ? [...basePanelEntries, { key: "access_control", label: "Access Control", href: "#access-control", sector: "project_delivery" as const }]
       : basePanelEntries
-  ) satisfies Array<{ key: DashboardPanelKey; label: string; href: string }>;
+  ) satisfies DashboardPanelEntry[];
+  const availableDashboardSectors = DASHBOARD_SECTOR_OPTIONS.filter((option) =>
+    panelEntries.some((entry) => entry.sector === option.key)
+  );
+  const resolvedDashboardSector = availableDashboardSectors.some((option) => option.key === activeDashboardSector)
+    ? activeDashboardSector
+    : availableDashboardSectors[0]?.key ?? "project_delivery";
+  const sectorPanelEntries = panelEntries.filter((entry) => entry.sector === resolvedDashboardSector);
   const activePanel = panelEntries.find((entry) => entry.key === activePanelKey) ?? panelEntries[0] ?? null;
+  const activeProjectSetupPhase = PROJECT_SETUP_PHASES.find((phase) => phase.key === activePanel?.key) ?? null;
   const activeExportModuleKey =
     activePanel && MODULE_KEYS.includes(activePanel.key as ModuleKey) ? (activePanel.key as ModuleKey) : null;
+  const canExportActivePanel = Boolean(activeProject.overview.id && (activeExportModuleKey || activeProjectSetupPhase));
   const isOverviewCreatePanelOpen = Boolean(openCreatePanelKey?.startsWith("overview-"));
   const overviewEditingContractor =
     overviewEditTarget?.kind === "contractor"
@@ -2549,13 +2804,17 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
           { key: "consultant-documents", label: "Consultant document", disabled: !canCreateConsultantSubmissions }
         ]
       : []),
+    ...(activeProjectSetupPhase
+      ? [{ key: getProjectSetupCreateKey(activeProjectSetupPhase.phase), label: `${activeProjectSetupPhase.label} item` }]
+      : []),
     ...(activePanelKey === "handover" ? [{ key: "handover", label: "Survey item" }] : []),
     ...(activePanelKey === "daily_reports" ? [{ key: "daily-reports", label: "Daily report" }] : []),
     ...(activePanelKey === "weekly_reports" ? [{ key: "weekly-reports", label: "Weekly report" }] : []),
     ...(activePanelKey === "financials" && canCreateFinancialRecords ? [{ key: "financials", label: "Financial submission" }] : []),
     ...(activePanelKey === "completion" ? [{ key: "completion", label: "Checklist batch" }] : []),
     ...(activePanelKey === "defects" ? [{ key: "defects", label: "Defect batch" }] : []),
-    ...(activePanelKey === "drawing_register" ? [{ key: "drawing-register", label: "Drawing sheet" }] : [])
+    ...(activePanelKey === "drawing_register" ? [{ key: "drawing-register", label: "Drawing sheet" }] : []),
+    ...(activePanelKey === "access_control" && viewer?.role === "master_admin" ? [{ key: "access-control", label: "Project access" }] : [])
   ];
   const availableMobileCreateActions = mobileCreateActions.filter((action) => !action.disabled);
   const hasOpenMobileCreatePanel = availableMobileCreateActions.some((action) => action.key === openCreatePanelKey);
@@ -2565,6 +2824,12 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
       setActivePanelKey(activePanel?.key ?? "overview");
     }
   }, [activePanel?.key, activePanelKey]);
+
+  useEffect(() => {
+    if (activePanel?.sector && activePanel.sector !== activeDashboardSector) {
+      setActiveDashboardSector(activePanel.sector);
+    }
+  }, [activeDashboardSector, activePanel?.sector]);
 
   useEffect(() => {
     if (!activeProject.overview.id || typeof window === "undefined") {
@@ -2668,6 +2933,21 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     });
   }
 
+  function handleDashboardSectorSelect(sector: DashboardSectorKey) {
+    setActiveDashboardSector(sector);
+    setIsMobileModuleListOpen(false);
+    setIsMobileCreateMenuOpen(false);
+
+    if (activePanel?.sector === sector) {
+      return;
+    }
+
+    const nextEntry = panelEntries.find((entry) => entry.sector === sector);
+    if (nextEntry) {
+      handlePanelSelect(nextEntry.key, nextEntry.href);
+    }
+  }
+
   function handleMobilePanelSelect(key: DashboardPanelKey, href: string) {
     setIsMobileModuleListOpen(false);
     setIsMobileCreateMenuOpen(false);
@@ -2682,6 +2962,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setIsMobileModuleListOpen(false);
     setOpenAiAssistantKey(null);
     setOpenFilterPanelKey(null);
+    setOverviewActionMenuKey(null);
 
     if (hasOpenMobileCreatePanel) {
       setOpenCreatePanelKey(null);
@@ -2702,6 +2983,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setOpenAiAssistantKey(null);
     setOpenFilterPanelKey(null);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
     setOpenCreatePanelKey(key);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2710,6 +2992,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   function toggleModuleAiAssistant(key: DashboardPanelKey) {
     setOpenCreatePanelKey(null);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
     setOpenFilterPanelKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2719,6 +3002,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   function toggleModuleFilter(key: DashboardPanelKey) {
     setOpenCreatePanelKey(null);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
     setOpenAiAssistantKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
@@ -2731,6 +3015,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
     setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
     setOpenCreatePanelKey((current) => (current?.startsWith("overview-") ? null : "overview-details"));
   }
 
@@ -2739,8 +3024,16 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
     setOpenFilterPanelKey(null);
     setIsMobileCreateMenuOpen(false);
     setIsMobileModuleListOpen(false);
+    setOverviewActionMenuKey(null);
     setOverviewEditTarget(target);
     setOpenCreatePanelKey(`overview-${target.kind}`);
+  }
+
+  function closeOverviewEditPanel() {
+    setOpenCreatePanelKey(null);
+    setOverviewEditTarget(null);
+    setOverviewActionMenuKey(null);
+    setIsMobileCreateMenuOpen(false);
   }
 
   async function handleModuleAiAssistantSubmit(event: FormEvent<HTMLFormElement>, moduleName: string, key: DashboardPanelKey) {
@@ -2824,6 +3117,53 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
         {children}
       </div>
     );
+
+    if (isProjectSetupPanelKey(key)) {
+      const phase = PROJECT_SETUP_PHASES.find((entry) => entry.key === key);
+      if (!phase) return null;
+
+      return renderShell(
+        `${getVisibleProjectSetupRecords(phase.phase).length} shown`,
+        () => {
+          setProjectSetupStatusFilter("all");
+          setProjectSetupDateFrom("");
+          setProjectSetupDateTo("");
+          setProjectSetupSearchFilter("");
+        },
+        <div className="filter-panel-grid">
+          <label className="field">
+            <span>Status</span>
+            <select
+              onChange={(event) => setProjectSetupStatusFilter(event.currentTarget.value as ProjectSetupStatusFilter)}
+              value={projectSetupStatusFilter}
+            >
+              <option value="all">All statuses</option>
+              {PROJECT_SETUP_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>From due</span>
+            <input onChange={(event) => setProjectSetupDateFrom(event.currentTarget.value)} type="date" value={projectSetupDateFrom} />
+          </label>
+          <label className="field">
+            <span>To due</span>
+            <input onChange={(event) => setProjectSetupDateTo(event.currentTarget.value)} type="date" value={projectSetupDateTo} />
+          </label>
+          <label className="field field-full">
+            <span>Search</span>
+            <input
+              onChange={(event) => setProjectSetupSearchFilter(event.currentTarget.value)}
+              placeholder="Item, category, owner, notes"
+              value={projectSetupSearchFilter}
+            />
+          </label>
+        </div>
+      );
+    }
 
     if (key === "contractor_submissions") {
       return renderShell(
@@ -3128,7 +3468,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
   }
 
   function handleMobileExport() {
-    if (!activeExportModuleKey || !activeProject.overview.id) {
+    if (!canExportActivePanel) {
       return;
     }
 
@@ -3140,7 +3480,14 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
       return;
     }
 
-    void handleModuleExport(activeExportModuleKey);
+    if (activeProjectSetupPhase) {
+      handleProjectSetupExport(activeProjectSetupPhase);
+      return;
+    }
+
+    if (activeExportModuleKey) {
+      void handleModuleExport(activeExportModuleKey);
+    }
   }
 
   async function requireConfiguredAndUser() {
@@ -4137,6 +4484,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
           projectContractors: [],
           projectConsultants: [],
           milestones: [],
+          projectSetupRecords: [],
           contractorSubmissions: [],
           consultantSubmissions: [],
           surveyItems: [],
@@ -4460,7 +4808,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
             project.projectContractors.map((item) => (item.id === contractor.id ? buildProjectContractorFromRow(data) : item))
           )
         }),
-        afterSuccess: () => setOverviewEditTarget(null)
+        afterSuccess: closeOverviewEditPanel
       });
       return;
     }
@@ -4506,7 +4854,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
             project.projectConsultants.map((item) => (item.id === consultant.id ? buildProjectConsultantFromRow(data) : item))
           )
         }),
-        afterSuccess: () => setOverviewEditTarget(null)
+        afterSuccess: closeOverviewEditPanel
       });
       return;
     }
@@ -4544,12 +4892,66 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
             )
             .sort((left, right) => left.dueDate.localeCompare(right.dueDate))
         }),
-        afterSuccess: () => setOverviewEditTarget(null)
+        afterSuccess: closeOverviewEditPanel
       });
       return;
     }
 
     handleMilestoneCreate(event);
+  }
+
+  function buildProjectSetupRecordPayload(formData: FormData, phase: ProjectSetupPhase) {
+    return {
+      phase,
+      category: String(formData.get("category") ?? "").trim(),
+      title: String(formData.get("title") ?? "").trim(),
+      owner: String(formData.get("owner") ?? "").trim(),
+      status: String(formData.get("status") ?? "not_started") as ProjectSetupStatus,
+      priority: String(formData.get("priority") ?? "normal") as ProjectSetupPriority,
+      due_date: String(formData.get("dueDate") ?? "") || null,
+      notes: String(formData.get("notes") ?? "").trim()
+    };
+  }
+
+  function handleProjectSetupRecordCreate(event: React.FormEvent<HTMLFormElement>, phase: ProjectSetupPhaseEntry) {
+    handleRecordCreate(event, {
+      table: "project_setup_records",
+      section: "project_setup_record",
+      label: `${phase.label} item saved.`,
+      buildPayload: (formData) => buildProjectSetupRecordPayload(formData, phase.phase),
+      select: "id, phase, category, title, owner, status, priority, due_date, notes, created_at",
+      append: (project, data, attachments) => ({
+        ...project,
+        projectSetupRecords: sortProjectSetupRecords([
+          ...project.projectSetupRecords,
+          buildProjectSetupRecordFromRow(data, attachments)
+        ])
+      }),
+      afterSuccess: () => setOpenCreatePanelKey(null)
+    });
+  }
+
+  function handleProjectSetupRecordUpdate(
+    event: React.FormEvent<HTMLFormElement>,
+    record: ProjectBundle["projectSetupRecords"][number]
+  ) {
+    handleRecordUpdate(event, {
+      table: "project_setup_records",
+      recordId: record.id,
+      section: "project_setup_record",
+      label: `${getProjectSetupPhaseLabel(record.phase)} item updated.`,
+      buildPayload: (formData) => buildProjectSetupRecordPayload(formData, record.phase),
+      select: "id, phase, category, title, owner, status, priority, due_date, notes, created_at",
+      update: (project, data, attachments) => ({
+        ...project,
+        projectSetupRecords: sortProjectSetupRecords(
+          project.projectSetupRecords.map((item) =>
+            item.id === record.id ? buildProjectSetupRecordFromRow(data, [...item.attachments, ...attachments]) : item
+          )
+        )
+      }),
+      afterSuccess: () => setEditingProjectSetupRecordId(null)
+    });
   }
 
   function handleDelete(options: {
@@ -5107,6 +5509,25 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
       setFeedback(`${MODULE_EXPORT_LABELS[moduleKey]} exported.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Unable to export this module.");
+    }
+  }
+
+  function handleProjectSetupExport(phase: ProjectSetupPhaseEntry) {
+    resetMessages();
+
+    try {
+      if (!activeProject.overview.id) {
+        throw new Error("Select a project before exporting.");
+      }
+
+      const rows = buildProjectSetupExportRows(getVisibleProjectSetupRecords(phase.phase));
+      const csvRows = rows.length ? rows : [{ Status: "No records saved" }];
+      const blob = new Blob([buildCsvContent(csvRows)], { type: "text/csv;charset=utf-8" });
+      const filename = `${sanitizeFilename(activeProject.overview.name || "project")}-${sanitizeFilename(phase.label.toLowerCase().replaceAll(" ", "-"))}.csv`;
+      downloadBlob(blob, filename);
+      setFeedback(`${phase.label} exported.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to export this project setup module.");
     }
   }
 
@@ -6266,6 +6687,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
         });
         setFeedback("Project access updated.");
         form.reset();
+        setOpenCreatePanelKey(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "Unable to save project access.");
       }
@@ -6307,6 +6729,385 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
         setError(caughtError instanceof Error ? caughtError.message : "Unable to remove access.");
       }
     });
+  }
+
+  function renderOverviewActionMenu({
+    menuKey,
+    label,
+    onEdit,
+    onDelete
+  }: {
+    menuKey: string;
+    label: string;
+    onEdit: () => void;
+    onDelete: () => void;
+  }) {
+    const isOpen = overviewActionMenuKey === menuKey;
+
+    return (
+      <div className="overview-action-menu">
+        <button
+          aria-expanded={isOpen}
+          aria-label={`Open actions for ${label}`}
+          className="ghost-button overview-action-menu-button"
+          onClick={() => setOverviewActionMenuKey((current) => (current === menuKey ? null : menuKey))}
+          type="button"
+        >
+          <span className="overview-menu-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </button>
+        {isOpen ? (
+          <div className="overview-action-dropdown" role="menu">
+            <button
+              className="overview-action-dropdown-item"
+              onClick={() => {
+                setOverviewActionMenuKey(null);
+                onEdit();
+              }}
+              role="menuitem"
+              type="button"
+            >
+              Edit
+            </button>
+            <button
+              className="overview-action-dropdown-item is-danger"
+              onClick={() => {
+                setOverviewActionMenuKey(null);
+                onDelete();
+              }}
+              role="menuitem"
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderProjectSetupPanel(phase: ProjectSetupPhaseEntry) {
+    const createKey = getProjectSetupCreateKey(phase.phase);
+    const records = getVisibleProjectSetupRecords(phase.phase);
+    const totalRecords = activeProject.projectSetupRecords.filter((record) => record.phase === phase.phase).length;
+    const categoryListId = `project-setup-categories-${phase.phase}`;
+
+    const renderRecordForm = (
+      record: ProjectBundle["projectSetupRecords"][number] | null,
+      onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+    ) => (
+      <form className="module-form-grid" onSubmit={onSubmit}>
+        <label className="field">
+          <span>Category</span>
+          <input
+            defaultValue={record?.category ?? ""}
+            key={`project-setup-category-${record?.id ?? createKey}`}
+            list={categoryListId}
+            name="category"
+            placeholder={phase.categories[0]}
+            required
+          />
+        </label>
+        <label className="field">
+          <span>Item</span>
+          <input
+            defaultValue={record?.title ?? ""}
+            key={`project-setup-title-${record?.id ?? createKey}`}
+            name="title"
+            placeholder={phase.deliverables[0]}
+            required
+          />
+        </label>
+        <label className="field">
+          <span>Owner</span>
+          <input
+            defaultValue={record?.owner ?? ""}
+            key={`project-setup-owner-${record?.id ?? createKey}`}
+            name="owner"
+            placeholder="Consultant / client / contractor"
+          />
+        </label>
+        <label className="field">
+          <span>Due date</span>
+          <input
+            defaultValue={record?.dueDate ?? ""}
+            key={`project-setup-due-${record?.id ?? createKey}`}
+            name="dueDate"
+            type="date"
+          />
+        </label>
+        <label className="field">
+          <span>Status</span>
+          <select defaultValue={record?.status ?? "not_started"} key={`project-setup-status-${record?.id ?? createKey}`} name="status">
+            {PROJECT_SETUP_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Priority</span>
+          <select defaultValue={record?.priority ?? "normal"} key={`project-setup-priority-${record?.id ?? createKey}`} name="priority">
+            {PROJECT_SETUP_PRIORITY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field field-full">
+          <span>Notes</span>
+          <textarea
+            defaultValue={record?.notes ?? ""}
+            key={`project-setup-notes-${record?.id ?? createKey}`}
+            name="notes"
+            rows={3}
+          />
+        </label>
+        <label className="field field-full">
+          <span>{record ? "Add more attachments" : "Attachments"}</span>
+          <input accept={getUploadAcceptForMode("mixed")} multiple name="attachments" type="file" />
+          <FreePilotUploadHint mode="mixed" />
+        </label>
+        <div className="record-actions field-full">
+          <button className="primary-button" disabled={isPending || !isConfigured || !activeProject.overview.id} type="submit">
+            {record ? "Save changes" : "Save item"}
+          </button>
+          {record ? (
+            <>
+              <button className="ghost-button" onClick={() => setEditingProjectSetupRecordId(null)} type="button">
+                Cancel
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  handleDelete({
+                    table: "project_setup_records",
+                    recordId: record.id,
+                    section: "project_setup_record",
+                    confirmMessage: `Delete ${record.title}? This will remove the project setup record and its attachments.`,
+                    remove: (project) => ({
+                      ...project,
+                      projectSetupRecords: project.projectSetupRecords.filter((item) => item.id !== record.id)
+                    })
+                  })
+                }
+                type="button"
+              >
+                Delete
+              </button>
+            </>
+          ) : null}
+        </div>
+      </form>
+    );
+
+    return (
+      <section className="content-card dashboard-module-card project-setup-module-card" id={phase.href.slice(1)}>
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Project Setup</p>
+            <h3>{phase.label}</h3>
+          </div>
+          <ModuleHeaderActions>
+            <ModuleAiButton
+              isOpen={openAiAssistantKey === phase.key}
+              moduleName={phase.label}
+              onClick={() => toggleModuleAiAssistant(phase.key)}
+            />
+            <FilterIconButton
+              isOpen={openFilterPanelKey === phase.key}
+              moduleName={phase.label}
+              onClick={() => toggleModuleFilter(phase.key)}
+            />
+            <CreateToggleButton isOpen={openCreatePanelKey === createKey} onClick={() => toggleCreatePanel(createKey)} />
+            <button
+              className="ghost-button module-export-button"
+              disabled={!activeProject.overview.id}
+              onClick={() => handleProjectSetupExport(phase)}
+              type="button"
+            >
+              <span aria-hidden="true" className="nav-symbol nav-symbol-theme">
+                {"\u21e9"}
+              </span>
+              Export
+            </button>
+          </ModuleHeaderActions>
+        </div>
+        {openAiAssistantKey === phase.key ? <ModuleAiAssistantPanel {...getModuleAiPanelProps(phase.key, phase.label)} /> : null}
+        {openFilterPanelKey === phase.key ? renderModuleFilterPanel(phase.key, phase.label) : null}
+        <datalist id={categoryListId}>
+          {phase.categories.map((category) => (
+            <option key={category} value={category} />
+          ))}
+        </datalist>
+        <div className="project-setup-phase-tabs" aria-label="Project setup phases">
+          {PROJECT_SETUP_PHASES.map((entry) => (
+            <button
+              aria-current={entry.key === phase.key ? "page" : undefined}
+              className={cn("project-setup-phase-tab", entry.key === phase.key && "is-active")}
+              key={entry.key}
+              onClick={() => handlePanelSelect(entry.key, entry.href)}
+              type="button"
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <details className="project-setup-guide-disclosure">
+          <summary>
+            <span>
+              <span className="eyebrow">Phase guide</span>
+              <strong>{phase.focus}</strong>
+            </span>
+            <span className="pill project-setup-guide-toggle">
+              <span className="guide-closed-label">Open guide</span>
+              <span className="guide-open-label">Hide guide</span>
+            </span>
+          </summary>
+          <div className="project-setup-guide-grid">
+            <article className="overview-read-card overview-read-card-wide">
+              <span>Focus</span>
+              <strong>{phase.focus}</strong>
+            </article>
+            <article className="overview-read-card">
+              <span>Checks</span>
+              <p>{phase.guide.join(" ")}</p>
+            </article>
+            <article className="overview-read-card">
+              <span>Deliverables</span>
+              <p>{phase.deliverables.join(", ")}</p>
+            </article>
+          </div>
+        </details>
+        {openCreatePanelKey === createKey ? (
+          <CreatePanel meta={<span className="pill">{totalRecords} saved</span>} title={`New ${phase.label} item`}>
+            {renderRecordForm(null, (event) => handleProjectSetupRecordCreate(event, phase))}
+          </CreatePanel>
+        ) : null}
+        <div className="submission-table-wrap top-gap">
+          {records.length ? (
+            <table className="submission-table project-setup-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Owner</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Files</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((record) => (
+                  <Fragment key={record.id}>
+                    <tr className={cn(selectedProjectSetupRecordId === record.id && "is-selected")}>
+                      <td className="submission-table-main-cell">
+                        <strong>{record.title}</strong>
+                        <span>{record.category || "General"}</span>
+                      </td>
+                      <td>
+                        <strong>{record.owner || "Unassigned"}</strong>
+                      </td>
+                      <td>{record.dueDate ? formatDate(record.dueDate) : "No date"}</td>
+                      <td>
+                        <ProjectSetupStatusPill status={record.status} />
+                      </td>
+                      <td>
+                        <span className="pill">{record.attachments.length}</span>
+                      </td>
+                      <td>
+                        <div className="record-actions submission-table-actions">
+                          <button
+                            className="secondary-button"
+                            onClick={() => {
+                              setEditingProjectSetupRecordId(null);
+                              setSelectedProjectSetupRecordId((current) => (current === record.id ? null : record.id));
+                            }}
+                            type="button"
+                          >
+                            {selectedProjectSetupRecordId === record.id ? "Hide" : "View"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {selectedProjectSetupRecordId === record.id ? (
+                      <tr className="submission-expanded-row">
+                        <td colSpan={6}>
+                          <div className="submission-inline-detail">
+                            <div className="record-header">
+                              <div>
+                                <p className="eyebrow">{phase.label}</p>
+                                <strong>{record.title}</strong>
+                                <p>{record.notes || "No notes recorded yet."}</p>
+                              </div>
+                              <div className="record-actions">
+                                <button
+                                  aria-expanded={editingProjectSetupRecordId === record.id}
+                                  className="secondary-button"
+                                  onClick={() =>
+                                    setEditingProjectSetupRecordId((current) => (current === record.id ? null : record.id))
+                                  }
+                                  type="button"
+                                >
+                                  {editingProjectSetupRecordId === record.id ? "Cancel" : "Edit"}
+                                </button>
+                                <button
+                                  className="ghost-button"
+                                  onClick={() => {
+                                    setSelectedProjectSetupRecordId(null);
+                                    setEditingProjectSetupRecordId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                            <div className="submission-item-list">
+                              <article className="submission-item">
+                                <div className="submission-item-header">
+                                  <strong>Category</strong>
+                                  <span className="pill">{getProjectSetupPriorityLabel(record.priority)}</span>
+                                </div>
+                                <p>{record.category || "General"}</p>
+                              </article>
+                              <article className="submission-item">
+                                <div className="submission-item-header">
+                                  <strong>Owner and due date</strong>
+                                </div>
+                                <p>
+                                  {record.owner || "Unassigned"}
+                                  {record.dueDate ? ` · ${formatDate(record.dueDate)}` : ""}
+                                </p>
+                              </article>
+                            </div>
+                            <AttachmentList attachments={record.attachments} />
+                            {editingProjectSetupRecordId === record.id ? (
+                              <div className="top-gap">
+                                {renderRecordForm(record, (event) => handleProjectSetupRecordUpdate(event, record))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <article className="record-surface">
+              <p className="muted-copy">No {phase.label.toLowerCase()} records match this view.</p>
+            </article>
+          )}
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -6467,6 +7268,28 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
         </section>
       ) : null}
 
+      {!isSuspended && activeProject.overview.id && availableDashboardSectors.length > 1 ? (
+        <section className="dashboard-sector-toolbar" aria-label="Dashboard section">
+          <div>
+            <p className="eyebrow">Dashboard</p>
+            <strong>{getDashboardSectorLabel(resolvedDashboardSector)}</strong>
+          </div>
+          <label className="dashboard-sector-select">
+            <span>Section</span>
+            <select
+              onChange={(event) => handleDashboardSectorSelect(event.currentTarget.value as DashboardSectorKey)}
+              value={resolvedDashboardSector}
+            >
+              {availableDashboardSectors.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      ) : null}
+
       {!isSuspended ? <div className="dashboard-grid">
         <aside className="dashboard-sidebar panel-surface">
           <div className="sidebar-title-row">
@@ -6481,7 +7304,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                 </tr>
               </thead>
               <tbody>
-                {panelEntries.map((entry, index) => {
+                {sectorPanelEntries.map((entry, index) => {
                   const isActive = activePanel?.key === entry.key;
 
                   return (
@@ -6601,37 +7424,21 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                           </td>
                           {canManageOverviewTeams ? (
                             <td className="overview-action-column">
-                              <div className="overview-row-actions">
-                                <button
-                                  aria-label={`Edit ${contractor.companyName}`}
-                                  className="ghost-button overview-table-action overview-edit-icon-button"
-                                  onClick={() => openOverviewEditPanel({ kind: "contractor", id: contractor.id })}
-                                  title="Edit"
-                                  type="button"
-                                >
-                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
-                                  <span className="overview-action-short" aria-hidden="true">E</span>
-                                </button>
-                                <button
-                                  aria-label={`Delete ${contractor.companyName}`}
-                                  className="ghost-button overview-table-action overview-delete-icon-button"
-                                  onClick={() =>
-                                    handleDelete({
-                                      table: "project_contractors",
-                                      recordId: contractor.id,
-                                      confirmMessage: `Delete ${contractor.companyName}? This will remove this team record from the project.`,
-                                      remove: (project) => ({
-                                        ...project,
-                                        projectContractors: project.projectContractors.filter((item) => item.id !== contractor.id)
-                                      })
+                              {renderOverviewActionMenu({
+                                menuKey: `contractor-${contractor.id}`,
+                                label: contractor.companyName,
+                                onEdit: () => openOverviewEditPanel({ kind: "contractor", id: contractor.id }),
+                                onDelete: () =>
+                                  handleDelete({
+                                    table: "project_contractors",
+                                    recordId: contractor.id,
+                                    confirmMessage: `Delete ${contractor.companyName}? This will remove this team record from the project.`,
+                                    remove: (project) => ({
+                                      ...project,
+                                      projectContractors: project.projectContractors.filter((item) => item.id !== contractor.id)
                                     })
-                                  }
-                                  title="Delete"
-                                  type="button"
-                                >
-                                  <span aria-hidden="true">X</span>
-                                </button>
-                              </div>
+                                  })
+                              })}
                             </td>
                           ) : null}
                         </tr>
@@ -6656,37 +7463,21 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                           </td>
                           {canManageOverviewTeams ? (
                             <td className="overview-action-column">
-                              <div className="overview-row-actions">
-                                <button
-                                  aria-label={`Edit ${consultant.companyName}`}
-                                  className="ghost-button overview-table-action overview-edit-icon-button"
-                                  onClick={() => openOverviewEditPanel({ kind: "consultant", id: consultant.id })}
-                                  title="Edit"
-                                  type="button"
-                                >
-                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
-                                  <span className="overview-action-short" aria-hidden="true">E</span>
-                                </button>
-                                <button
-                                  aria-label={`Delete ${consultant.companyName}`}
-                                  className="ghost-button overview-table-action overview-delete-icon-button"
-                                  onClick={() =>
-                                    handleDelete({
-                                      table: "project_consultants",
-                                      recordId: consultant.id,
-                                      confirmMessage: `Delete ${consultant.companyName}? This will remove this consultant record from the project.`,
-                                      remove: (project) => ({
-                                        ...project,
-                                        projectConsultants: project.projectConsultants.filter((item) => item.id !== consultant.id)
-                                      })
+                              {renderOverviewActionMenu({
+                                menuKey: `consultant-${consultant.id}`,
+                                label: consultant.companyName,
+                                onEdit: () => openOverviewEditPanel({ kind: "consultant", id: consultant.id }),
+                                onDelete: () =>
+                                  handleDelete({
+                                    table: "project_consultants",
+                                    recordId: consultant.id,
+                                    confirmMessage: `Delete ${consultant.companyName}? This will remove this consultant record from the project.`,
+                                    remove: (project) => ({
+                                      ...project,
+                                      projectConsultants: project.projectConsultants.filter((item) => item.id !== consultant.id)
                                     })
-                                  }
-                                  title="Delete"
-                                  type="button"
-                                >
-                                  <span aria-hidden="true">X</span>
-                                </button>
-                              </div>
+                                  })
+                              })}
                             </td>
                           ) : null}
                         </tr>
@@ -6723,37 +7514,21 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                           <td>{formatDate(milestone.dueDate)}</td>
                           {canManageOverviewTeams ? (
                             <td>
-                              <div className="overview-row-actions">
-                                <button
-                                  aria-label={`Edit ${milestone.title}`}
-                                  className="ghost-button overview-table-action overview-edit-icon-button"
-                                  onClick={() => openOverviewEditPanel({ kind: "milestone", id: milestone.id })}
-                                  title="Edit"
-                                  type="button"
-                                >
-                                  <span className="overview-action-full" aria-hidden="true">Edit</span>
-                                  <span className="overview-action-short" aria-hidden="true">E</span>
-                                </button>
-                                <button
-                                  aria-label={`Delete ${milestone.title}`}
-                                  className="ghost-button overview-table-action overview-delete-icon-button"
-                                  onClick={() =>
-                                    handleDelete({
-                                      table: "milestones",
-                                      recordId: milestone.id,
-                                      confirmMessage: `Delete ${milestone.title}? This will remove this milestone from the project.`,
-                                      remove: (project) => ({
-                                        ...project,
-                                        milestones: project.milestones.filter((item) => item.id !== milestone.id)
-                                      })
+                              {renderOverviewActionMenu({
+                                menuKey: `milestone-${milestone.id}`,
+                                label: milestone.title,
+                                onEdit: () => openOverviewEditPanel({ kind: "milestone", id: milestone.id }),
+                                onDelete: () =>
+                                  handleDelete({
+                                    table: "milestones",
+                                    recordId: milestone.id,
+                                    confirmMessage: `Delete ${milestone.title}? This will remove this milestone from the project.`,
+                                    remove: (project) => ({
+                                      ...project,
+                                      milestones: project.milestones.filter((item) => item.id !== milestone.id)
                                     })
-                                  }
-                                  title="Delete"
-                                  type="button"
-                                >
-                                  <span aria-hidden="true">X</span>
-                                </button>
-                              </div>
+                                  })
+                              })}
                             </td>
                           ) : null}
                         </tr>
@@ -6916,8 +7691,8 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                         {overviewEditingContractor ? "Save contractor" : "Add contractor company"}
                       </button>
                       {overviewEditingContractor ? (
-                        <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
-                          Cancel edit
+                        <button className="ghost-button" onClick={closeOverviewEditPanel} type="button">
+                          Cancel
                         </button>
                       ) : null}
                     </div>
@@ -6976,8 +7751,8 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                         {overviewEditingConsultant ? "Save consultant" : "Add consultant company"}
                       </button>
                       {overviewEditingConsultant ? (
-                        <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
-                          Cancel edit
+                        <button className="ghost-button" onClick={closeOverviewEditPanel} type="button">
+                          Cancel
                         </button>
                       ) : null}
                     </div>
@@ -7020,8 +7795,8 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                       {overviewEditingMilestone ? "Save milestone" : "Add milestone"}
                     </button>
                     {overviewEditingMilestone ? (
-                      <button className="ghost-button" onClick={() => setOverviewEditTarget(null)} type="button">
-                        Cancel edit
+                      <button className="ghost-button" onClick={closeOverviewEditPanel} type="button">
+                        Cancel
                       </button>
                     ) : null}
                   </div>
@@ -7032,6 +7807,8 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
             ) : null}
             </section>
           ) : null}
+
+          {activeProjectSetupPhase ? renderProjectSetupPanel(activeProjectSetupPhase) : null}
 
           {moduleAccess.contractor_submissions && activePanel?.key === "contractor_submissions" ? (
             <section className="content-card dashboard-module-card" id="contractor-submissions">
@@ -8628,7 +9405,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                                       }
                                       type="button"
                                     >
-                                      {editingDailyReportId === report.id ? "Hide edit" : "Edit"}
+                                      {editingDailyReportId === report.id ? "Cancel" : "Edit"}
                                     </button>
                                     <button
                                       className="ghost-button"
@@ -8673,11 +9450,11 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                                           manpower_by_trade: String(formData.get("manpowerByTrade") ?? "").trim()
                                         }),
                                         select: "id, report_date, location, work_done, manpower_by_trade",
-                                        update: (project, data, attachments) => ({
-                                          ...project,
-                                          dailyReports: project.dailyReports.map((item) =>
-                                            item.id === report.id
-                                              ? {
+                                          update: (project, data, attachments) => ({
+                                            ...project,
+                                            dailyReports: project.dailyReports.map((item) =>
+                                              item.id === report.id
+                                                ? {
                                                   id: String(data.id),
                                                   reportDate: String(data.report_date),
                                                   location: String(data.location),
@@ -8685,9 +9462,10 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                                                   manpowerByTrade: String(data.manpower_by_trade ?? ""),
                                                   attachments: [...item.attachments, ...attachments]
                                                 }
-                                              : item
-                                          )
-                                        })
+                                                : item
+                                            )
+                                        }),
+                                        afterSuccess: () => setEditingDailyReportId(null)
                                       })
                                     }
                                   >
@@ -10017,125 +10795,61 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                   <span className="pill">{visibleDrawingSheets.length} shown</span>
                 </div>
                 {visibleDrawingSheets.length ? (
-                  <div className="drawing-register-grid">
-                    {visibleDrawingSheets.map((drawing) => (
-                      <article className="record-surface drawing-sheet-card" key={drawing.id}>
-                        <div className="record-header">
-                          <div>
-                            <p className="eyebrow">{getDrawingTypeLabel(drawing.drawingType)}</p>
-                            <strong>{drawing.title || drawing.sheetNumber || "Untitled drawing"}</strong>
-                            <p>{[drawing.sheetNumber, drawing.discipline].filter(Boolean).join(" · ") || "No sheet details"}</p>
-                          </div>
-                          <span className="pill">{drawing.revision || "No revision"}</span>
-                        </div>
-                        <div className="overview-read-grid top-gap">
-                          <article className="overview-read-card">
-                            <span>Type</span>
-                            <strong>{getDrawingTypeLabel(drawing.drawingType)}</strong>
-                          </article>
-                          <article className="overview-read-card">
-                            <span>Sheet number</span>
-                            <strong>{drawing.sheetNumber || "Not set"}</strong>
-                          </article>
-                          <article className="overview-read-card">
-                            <span>Revision</span>
-                            <strong>{drawing.revision || "Not set"}</strong>
-                          </article>
-                          <article className="overview-read-card">
-                            <span>Discipline</span>
-                            <strong>{drawing.discipline || "Not set"}</strong>
-                          </article>
-                          <article className="overview-read-card">
-                            <span>Uploaded</span>
-                            <strong>{formatDateTime(drawing.createdAt)}</strong>
-                          </article>
-                        </div>
-                        <div className="record-actions top-gap">
-                          {drawing.filePublicUrl ? (
-                            <a className="secondary-button" href={drawing.filePublicUrl} rel="noreferrer" target="_blank">
-                              Open drawing
-                            </a>
-                          ) : (
-                            <span className="pill">File unavailable</span>
-                          )}
-                          <button
-                            className="ghost-button"
-                            disabled={drawingSummaryActionId === drawing.id || !isConfigured}
-                            onClick={() => handleDrawingSummaryGenerate(drawing)}
-                            type="button"
-                          >
-                            {drawingSummaryActionId === drawing.id ? "Summarizing..." : "AI summary"}
-                          </button>
-                          <button
-                            className="ghost-button"
-                            onClick={() => {
-                              setHeatmapDrawingId(drawing.id);
-                              setActiveHeatmapLinkId(null);
-                            }}
-                            type="button"
-                          >
-                            View heatmap
-                          </button>
-                        </div>
-                        {drawing.aiSummarizedAt ||
-                        drawing.aiDrawingTitle ||
-                        drawing.aiDiscipline ||
-                        drawing.aiLikelyZones.length ||
-                        drawing.aiKeyNotes.length ||
-                        drawing.aiRisks.length ? (
-                          <div className="drawing-ai-summary top-gap">
-                            <div className="record-header">
-                              <div>
-                                <p className="eyebrow">AI Drawing Summary</p>
-                                <strong>{drawing.aiDrawingTitle || "Drawing summary"}</strong>
-                                <p>{drawing.aiDiscipline || "Discipline not identified"}</p>
-                              </div>
-                              {drawing.aiSummarizedAt ? <span className="pill">{formatDateTime(drawing.aiSummarizedAt)}</span> : null}
-                            </div>
-                            <div className="module-form-grid top-gap">
-                              <div className="field">
-                                <span>Likely zones / rooms</span>
-                                <div className="attachment-list">
-                                  {drawing.aiLikelyZones.length ? (
-                                    drawing.aiLikelyZones.map((zone) => (
-                                      <span className="pill" key={zone}>
-                                        {zone}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="pill">No zones identified</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="field field-full">
-                                <span>Key notes</span>
-                                {drawing.aiKeyNotes.length ? (
-                                  <ul className="notice-list">
-                                    {drawing.aiKeyNotes.map((note) => (
-                                      <li key={note}>{note}</li>
-                                    ))}
-                                  </ul>
+                  <div className="submission-table-wrap top-gap">
+                    <table className="submission-table drawing-register-table">
+                      <thead>
+                        <tr>
+                          <th>Drawing</th>
+                          <th>Type</th>
+                          <th>Rev</th>
+                          <th>Uploaded</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleDrawingSheets.map((drawing) => (
+                          <tr key={drawing.id}>
+                            <td className="submission-table-main-cell">
+                              <strong>{drawing.title || drawing.sheetNumber || "Untitled drawing"}</strong>
+                              <small>{[drawing.sheetNumber, drawing.discipline].filter(Boolean).join(" · ") || "No sheet details"}</small>
+                              {drawing.aiDrawingTitle ? <small>AI: {drawing.aiDrawingTitle}</small> : null}
+                            </td>
+                            <td>{getDrawingTypeLabel(drawing.drawingType)}</td>
+                            <td>{drawing.revision || "-"}</td>
+                            <td>{formatDateTime(drawing.createdAt)}</td>
+                            <td>
+                              <div className="record-actions submission-table-actions">
+                                {drawing.filePublicUrl ? (
+                                  <a className="secondary-button" href={drawing.filePublicUrl} rel="noreferrer" target="_blank">
+                                    Open
+                                  </a>
                                 ) : (
-                                  <p className="muted-copy">No key notes saved.</p>
+                                  <span className="pill">No file</span>
                                 )}
+                                <button
+                                  className="ghost-button"
+                                  disabled={drawingSummaryActionId === drawing.id || !isConfigured}
+                                  onClick={() => handleDrawingSummaryGenerate(drawing)}
+                                  type="button"
+                                >
+                                  AI
+                                </button>
+                                <button
+                                  className="ghost-button"
+                                  onClick={() => {
+                                    setHeatmapDrawingId(drawing.id);
+                                    setActiveHeatmapLinkId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  Heatmap
+                                </button>
                               </div>
-                              <div className="field field-full">
-                                <span>Possible risks / unclear areas</span>
-                                {drawing.aiRisks.length ? (
-                                  <ul className="notice-list">
-                                    {drawing.aiRisks.map((risk) => (
-                                      <li key={risk}>{risk}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="muted-copy">No risks or unclear areas saved.</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                      </article>
-                    ))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
                   <article className="record-surface">
@@ -10987,41 +11701,49 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
                     moduleName="Access Control"
                     onClick={() => toggleModuleFilter("access_control")}
                   />
+                  <CreateToggleButton
+                    isOpen={openCreatePanelKey === "access-control"}
+                    onClick={() => toggleCreatePanel("access-control")}
+                  />
                 </ModuleHeaderActions>
               </div>
               {openAiAssistantKey === "access_control" ? (
                 <ModuleAiAssistantPanel {...getModuleAiPanelProps("access_control", "Access Control")} />
               ) : null}
               {openFilterPanelKey === "access_control" ? renderModuleFilterPanel("access_control", "Access Control") : null}
-              <form className="membership-form-grid" onSubmit={handleMembershipSave}>
-                <label className="field field-full">
-                  <span>User email</span>
-                  <input name="email" placeholder="contractor@example.com" required type="email" />
-                </label>
-                <label className="field">
-                  <span>Role</span>
-                  <select name="role" defaultValue="contractor">
-                    <option value="client">Client</option>
-                    <option value="contractor">Main Contractor</option>
-                    <option value="subcontractor">Sub Contractor</option>
-                    <option value="consultant">Consultant</option>
-                  </select>
-                </label>
-                <div className="permission-box field-full">
-                  <span>Module access</span>
-                  <div className="permission-grid">
-                    {MODULE_KEYS.map((moduleKey) => (
-                      <label className="permission-item" key={moduleKey}>
-                        <input defaultChecked={moduleKey === "overview"} name={moduleKey} type="checkbox" />
-                        <span>{formatSectionLabel(moduleKey)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <button className="primary-button" disabled={isPending || !isConfigured} type="submit">
-                  Save access
-                </button>
-              </form>
+              {openCreatePanelKey === "access-control" ? (
+                <CreatePanel meta={<span className="pill">{visibleMembers.length} members</span>} title="Add project access">
+                  <form className="membership-form-grid" onSubmit={handleMembershipSave}>
+                    <label className="field field-full">
+                      <span>User email</span>
+                      <input name="email" placeholder="contractor@example.com" required type="email" />
+                    </label>
+                    <label className="field">
+                      <span>Role</span>
+                      <select name="role" defaultValue="contractor">
+                        <option value="client">Client</option>
+                        <option value="contractor">Main Contractor</option>
+                        <option value="subcontractor">Sub Contractor</option>
+                        <option value="consultant">Consultant</option>
+                      </select>
+                    </label>
+                    <div className="permission-box field-full">
+                      <span>Module access</span>
+                      <div className="permission-grid">
+                        {MODULE_KEYS.map((moduleKey) => (
+                          <label className="permission-item" key={moduleKey}>
+                            <input defaultChecked={moduleKey === "overview"} name={moduleKey} type="checkbox" />
+                            <span>{formatSectionLabel(moduleKey)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <button className="primary-button" disabled={isPending || !isConfigured} type="submit">
+                      Save access
+                    </button>
+                  </form>
+                </CreatePanel>
+              ) : null}
 
               <div className="list-grid top-gap">
                 {visibleMembers.length ? (
@@ -11075,14 +11797,29 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
               <div className="mobile-bottom-sheet-header">
                 <div>
                   <p className="eyebrow">Modules</p>
-                  <strong>{activePanel.label}</strong>
+                  <strong>{getDashboardSectorLabel(resolvedDashboardSector)}</strong>
                 </div>
                 <button className="ghost-button" onClick={() => setIsMobileModuleListOpen(false)} type="button">
                   Close
                 </button>
               </div>
+              {availableDashboardSectors.length > 1 ? (
+                <label className="dashboard-sector-select mobile-sheet-sector-select">
+                  <span>Section</span>
+                  <select
+                    onChange={(event) => handleDashboardSectorSelect(event.currentTarget.value as DashboardSectorKey)}
+                    value={resolvedDashboardSector}
+                  >
+                    {availableDashboardSectors.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="mobile-bottom-sheet-list">
-                {panelEntries.map((entry, index) => {
+                {sectorPanelEntries.map((entry, index) => {
                   const isActive = activePanel.key === entry.key;
 
                   return (
@@ -11159,7 +11896,7 @@ export function DashboardShell({ initialProjects, isConfigured, todaySnapshot, v
             <button
               aria-expanded={isContractorDocumentExportMode}
               className={cn("mobile-bottom-action", isContractorDocumentExportMode && "is-active")}
-              disabled={!activeExportModuleKey || !activeProject.overview.id}
+              disabled={!canExportActivePanel}
               onClick={handleMobileExport}
               type="button"
             >

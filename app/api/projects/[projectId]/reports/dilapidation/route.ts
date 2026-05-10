@@ -47,6 +47,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
         projectContractors: [],
         projectConsultants: [],
         milestones: [],
+        projectSetupRecords: [],
         contractorSubmissions: [],
         consultantSubmissions: [],
         surveyItems: (surveyItems ?? []).map((item) => ({
@@ -84,7 +85,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
     color: rgb(0.04, 0.05, 0.1)
   });
 
-  page.drawText("Dilapidation Report / Pre-Construction Survey", {
+  page.drawText("Dilapidation Report / Project Setup Survey", {
     x: 40,
     y: 540,
     size: 22,

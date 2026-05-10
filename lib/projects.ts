@@ -561,6 +561,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
     { data: projectContractors = [] },
     { data: projectConsultants = [] },
     { data: milestones = [] },
+    { data: projectSetupRecords = [] },
     { data: contractorSubmissions = [] },
     { data: consultantSubmissions = [] },
     { data: surveyItems = [] },
@@ -579,6 +580,10 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
     supabase.from("project_contractors").select("id, project_id, company_name, contractor_type, trades").in("project_id", projectIds),
     supabase.from("project_consultants").select("id, project_id, company_name, trades").in("project_id", projectIds),
     supabase.from("milestones").select("id, project_id, title, due_date").in("project_id", projectIds),
+    supabase
+      .from("project_setup_records")
+      .select("id, project_id, phase, category, title, owner, status, priority, due_date, notes, created_at")
+      .in("project_id", projectIds),
     supabase
       .from("contractor_submissions")
       .select(
@@ -625,6 +630,7 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
   ]);
 
   const safeMilestones = milestones ?? [];
+  const safeProjectSetupRecords = projectSetupRecords ?? [];
   const safeProjectContractors = projectContractors ?? [];
   const safeProjectConsultants = projectConsultants ?? [];
   const safeContractorSubmissions = contractorSubmissions ?? [];
@@ -771,6 +777,27 @@ export async function getProjectDashboardData(): Promise<{ projects: ProjectBund
     milestones: safeMilestones
       .filter((item) => item.project_id === row.id)
       .map((item) => ({ id: item.id, title: item.title, dueDate: item.due_date })),
+    projectSetupRecords: safeProjectSetupRecords
+      .filter((item) => item.project_id === row.id)
+      .map((item) => ({
+        id: item.id,
+        phase:
+          item.phase === "due_diligence" || item.phase === "design" || item.phase === "tender" || item.phase === "award"
+            ? item.phase
+            : "site_survey",
+        category: item.category ?? "",
+        title: item.title ?? "",
+        owner: item.owner ?? "",
+        status:
+          item.status === "in_progress" || item.status === "blocked" || item.status === "ready" || item.status === "closed"
+            ? item.status
+            : "not_started",
+        priority: item.priority === "high" || item.priority === "urgent" ? item.priority : "normal",
+        dueDate: item.due_date ?? null,
+        notes: item.notes ?? "",
+        attachments: attachmentsByRecord[`project_setup_record:${item.id}`] ?? [],
+        createdAt: item.created_at ?? ""
+      })),
     contractorSubmissions: safeContractorSubmissions
       .filter((item) => item.project_id === row.id)
       .map((item) => ({

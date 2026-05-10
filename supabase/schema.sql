@@ -112,6 +112,32 @@ create table if not exists public.milestones (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.project_setup_records (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  phase text not null,
+  category text not null default '',
+  title text not null,
+  owner text not null default '',
+  status text not null default 'not_started',
+  priority text not null default 'normal',
+  due_date date,
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  constraint project_setup_records_phase_check check (
+    phase in ('site_survey', 'due_diligence', 'design', 'tender', 'award')
+  ),
+  constraint project_setup_records_status_check check (
+    status in ('not_started', 'in_progress', 'blocked', 'ready', 'closed')
+  ),
+  constraint project_setup_records_priority_check check (
+    priority in ('normal', 'high', 'urgent')
+  )
+);
+
+create index if not exists project_setup_records_project_phase_idx
+on public.project_setup_records (project_id, phase, due_date);
+
 create table if not exists public.contractor_submissions (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -931,6 +957,7 @@ as $$
   select case section_type
     when 'contractor_submission' then 'contractor_submissions'
     when 'consultant_submission' then 'contractor_submissions'
+    when 'project_setup_record' then 'overview'
     when 'survey_item' then 'handover'
     when 'daily_report' then 'daily_reports'
     when 'weekly_report' then 'weekly_reports'
@@ -1542,6 +1569,7 @@ alter table public.project_members enable row level security;
 alter table public.project_contractors enable row level security;
 alter table public.project_consultants enable row level security;
 alter table public.milestones enable row level security;
+alter table public.project_setup_records enable row level security;
 alter table public.contractor_submissions enable row level security;
 alter table public.consultant_submissions enable row level security;
 alter table public.survey_items enable row level security;
@@ -1576,6 +1604,7 @@ drop policy if exists "project_consultants_insert" on public.project_consultants
 drop policy if exists "project_consultants_update" on public.project_consultants;
 drop policy if exists "project_consultants_delete" on public.project_consultants;
 drop policy if exists "milestones_manage" on public.milestones;
+drop policy if exists "project_setup_records_manage" on public.project_setup_records;
 drop policy if exists "contractor_submissions_manage" on public.contractor_submissions;
 drop policy if exists "contractor_submissions_select" on public.contractor_submissions;
 drop policy if exists "contractor_submissions_insert" on public.contractor_submissions;
@@ -1709,6 +1738,11 @@ using (public.can_manage_overview_team_setup(project_id, auth.uid()));
 
 create policy "milestones_manage"
 on public.milestones for all
+using (public.has_module_access(project_id, 'overview', auth.uid()))
+with check (public.has_module_access(project_id, 'overview', auth.uid()));
+
+create policy "project_setup_records_manage"
+on public.project_setup_records for all
 using (public.has_module_access(project_id, 'overview', auth.uid()))
 with check (public.has_module_access(project_id, 'overview', auth.uid()));
 
