@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PROJECT_AXIS_TAGLINE, ProjectAxisMark, ProjectAxisWordmark } from "@/components/project-axis-brand";
 
 type PreviewIconName = "oversight" | "report" | "shield" | "mobile" | "budget" | "team" | "clock" | "chart";
 
@@ -156,38 +157,6 @@ function PreviewIcon({ name }: { name: PreviewIconName }) {
   );
 }
 
-function ProjectAxisMark() {
-  return (
-    <svg aria-hidden="true" className="landing-preview-mark-svg" viewBox="0 0 64 64">
-      <defs>
-        <linearGradient id="landingPreviewMarkGradient" x1="10" x2="54" y1="10" y2="54">
-          <stop offset="0%" stopColor="#7c5cff" />
-          <stop offset="48%" stopColor="#b790ff" />
-          <stop offset="100%" stopColor="#00d4ff" />
-        </linearGradient>
-        <radialGradient id="landingPreviewMarkCore" cx="45%" cy="40%" r="58%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="42%" stopColor="#c8bbff" />
-          <stop offset="100%" stopColor="#7c5cff" />
-        </radialGradient>
-      </defs>
-      <path d="M19 13a22 22 0 0 0-6 14" />
-      <path d="M45 13a22 22 0 0 1 6 14" />
-      <path d="M13 37a22 22 0 0 0 6 14" />
-      <path d="M51 37a22 22 0 0 1-6 14" />
-      <path d="M32 6v12" />
-      <path d="M32 46v12" />
-      <path d="M6 32h12" />
-      <path d="M46 32h12" />
-      <circle cx="32" cy="32" r="8" />
-      <circle cx="32" cy="6" r="2.7" />
-      <circle cx="32" cy="58" r="2.7" />
-      <circle cx="6" cy="32" r="2.7" />
-      <circle cx="58" cy="32" r="2.7" />
-    </svg>
-  );
-}
-
 export function LandingPreviewClient() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -228,9 +197,7 @@ export function LandingPreviewClient() {
           <span className="landing-preview-logo-mark">
             <ProjectAxisMark />
           </span>
-          <span className="landing-preview-wordmark">
-            Project<strong>Axis</strong>
-          </span>
+          <ProjectAxisWordmark className="landing-preview-wordmark" />
         </Link>
 
         <nav className="landing-preview-nav-links" aria-label="Landing preview navigation">
@@ -287,7 +254,7 @@ export function LandingPreviewClient() {
           <div className="landing-preview-hero-content">
             <div className="landing-preview-pill">
               <span />
-              Build. Execute. Accelerate.
+              {PROJECT_AXIS_TAGLINE}
             </div>
             <h1>
               Construction
@@ -480,9 +447,7 @@ export function LandingPreviewClient() {
             <span className="landing-preview-logo-mark">
               <ProjectAxisMark />
             </span>
-            <span className="landing-preview-wordmark">
-              Project<strong>Axis</strong>
-            </span>
+            <ProjectAxisWordmark className="landing-preview-wordmark" />
           </Link>
           <p>Building the future of construction management with software that feels fast, clear, and site-ready.</p>
         </div>

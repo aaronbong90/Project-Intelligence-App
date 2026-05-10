@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/utils";
+import { PROJECT_AXIS_TAGLINE, ProjectAxisMark, ProjectAxisWordmark } from "@/components/project-axis-brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { ProjectNotification } from "@/types/app";
 
@@ -247,13 +248,15 @@ export function TopNav() {
   return (
     <header className={`top-nav${useCompactTopNav ? " top-nav-compact" : ""}`}>
       <div className="top-nav-brand">
-        <div className="top-nav-logo-lockup" aria-label="ProjectAxis - Build. Execute. Accelerate.">
+        <div className="top-nav-logo-lockup" aria-label={`ProjectAxis - ${PROJECT_AXIS_TAGLINE}`}>
           <span aria-hidden="true" className="top-nav-logo-mark">
-            <span className="top-nav-logo-cross" />
+            <ProjectAxisMark />
           </span>
           <span className="top-nav-logo-word">
-            <h1>ProjectAxis</h1>
-            <span className="top-nav-logo-tagline">Build. Execute. Accelerate.</span>
+            <h1>
+              <ProjectAxisWordmark className="top-nav-wordmark" />
+            </h1>
+            <span className="top-nav-logo-tagline">{PROJECT_AXIS_TAGLINE}</span>
           </span>
         </div>
       </div>

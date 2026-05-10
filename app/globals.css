@@ -181,59 +181,55 @@ p {
 }
 
 .top-nav-logo-mark {
-  position: relative;
   display: inline-flex;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  border: 1px solid color-mix(in srgb, var(--brand-2) 36%, var(--line-strong));
-  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(124, 92, 255, 0.4);
+  border-radius: 14px;
   background:
-    radial-gradient(circle, #ffffff 0 9%, #8b7cff 10% 23%, transparent 24%),
-    linear-gradient(135deg, color-mix(in srgb, var(--brand-2) 28%, transparent), color-mix(in srgb, var(--symbol-cyan) 16%, transparent));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 24px color-mix(in srgb, var(--brand-2) 22%, transparent);
+    radial-gradient(circle at 50% 48%, rgba(124, 92, 255, 0.38), transparent 36%),
+    linear-gradient(145deg, rgba(124, 92, 255, 0.26), rgba(0, 212, 255, 0.1)),
+    #070912;
+  box-shadow:
+    inset 0 0 0 1px rgba(230, 232, 239, 0.07),
+    0 0 26px rgba(124, 92, 255, 0.24);
 }
 
-.top-nav-logo-mark::before,
-.top-nav-logo-mark::after {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border: 2px solid transparent;
-  border-radius: 999px;
-  transform: rotate(-25deg);
+.project-axis-mark-svg {
+  display: block;
+  width: 34px;
+  height: 34px;
+  overflow: visible;
 }
 
-.top-nav-logo-mark::before {
-  border-top-color: #f0edff;
-  border-left-color: #b88cff;
+.project-axis-mark-arc,
+.project-axis-mark-axis,
+.project-axis-mark-inner-axis {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(124, 92, 255, 0.72));
 }
 
-.top-nav-logo-mark::after {
-  border-right-color: var(--symbol-cyan);
-  border-bottom-color: var(--brand-2);
+.project-axis-mark-arc {
+  stroke-width: 4.2;
 }
 
-.top-nav-logo-cross::before,
-.top-nav-logo-cross::after {
-  content: "";
-  position: absolute;
-  background: linear-gradient(90deg, transparent, #ebe8ff, transparent);
+.project-axis-mark-axis {
+  stroke-width: 3.3;
+}
+
+.project-axis-mark-inner-axis {
   opacity: 0.9;
+  stroke-width: 2.6;
 }
 
-.top-nav-logo-cross::before {
-  top: 18px;
-  left: 5px;
-  width: 28px;
-  height: 2px;
-}
-
-.top-nav-logo-cross::after {
-  top: 5px;
-  left: 18px;
-  width: 2px;
-  height: 28px;
+.project-axis-mark-core,
+.project-axis-mark-dot {
+  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.82));
 }
 
 .top-nav-logo-word {
@@ -246,12 +242,24 @@ p {
 .top-nav-logo-tagline {
   display: block;
   color: #b8a9ff;
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 820;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.32em;
   line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.top-nav-wordmark {
+  color: var(--text);
+  font-weight: 470;
+  letter-spacing: 0.03em;
+}
+
+.top-nav-wordmark strong {
+  color: var(--text-strong);
+  font-weight: 900;
+  letter-spacing: 0.01em;
 }
 
 .top-nav-links {
@@ -1923,14 +1931,15 @@ body:has(.landing-preview-shell) {
 }
 
 .landing-preview-logo-mark {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  border: 1px solid rgba(124, 92, 255, 0.38);
-  border-radius: 8px;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  border: 1px solid rgba(124, 92, 255, 0.42);
+  border-radius: 16px;
   background:
-    linear-gradient(145deg, rgba(124, 92, 255, 0.28), rgba(0, 212, 255, 0.1)),
-    #0a0d18;
+    radial-gradient(circle at 50% 48%, rgba(124, 92, 255, 0.42), transparent 36%),
+    linear-gradient(145deg, rgba(124, 92, 255, 0.3), rgba(0, 212, 255, 0.12)),
+    #070912;
   box-shadow:
     0 0 0 1px rgba(230, 232, 239, 0.05) inset,
     0 18px 40px rgba(124, 92, 255, 0.28);
@@ -1941,24 +1950,9 @@ body:has(.landing-preview-shell) {
   content: none;
 }
 
-.landing-preview-mark-svg {
-  width: 34px;
-  height: 34px;
-  overflow: visible;
-}
-
-.landing-preview-mark-svg path {
-  fill: none;
-  stroke: url("#landingPreviewMarkGradient");
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3.2;
-  filter: drop-shadow(0 0 4px rgba(124, 92, 255, 0.62));
-}
-
-.landing-preview-mark-svg circle {
-  fill: url("#landingPreviewMarkCore");
-  filter: drop-shadow(0 0 7px rgba(124, 92, 255, 0.78));
+.landing-preview-logo-mark .project-axis-mark-svg {
+  width: 39px;
+  height: 39px;
 }
 
 .landing-preview-wordmark {
@@ -2191,14 +2185,15 @@ body:has(.landing-preview-shell) {
 
 @media (max-width: 720px) {
   .landing-preview-logo-mark {
-    width: 38px;
-    height: 38px;
-    flex-basis: 38px;
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+    border-radius: 13px;
   }
 
-  .landing-preview-mark-svg {
-    width: 29px;
-    height: 29px;
+  .landing-preview-logo-mark .project-axis-mark-svg {
+    width: 32px;
+    height: 32px;
   }
 
   .landing-preview-wordmark {
@@ -5244,27 +5239,15 @@ body:has(.landing-preview-shell) {
   }
 
   .top-nav-logo-mark {
-    width: 30px;
-    height: 30px;
-    flex-basis: 30px;
-    border-radius: 9px;
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+    border-radius: 11px;
   }
 
-  .top-nav-logo-mark::before,
-  .top-nav-logo-mark::after {
-    inset: 6px;
-  }
-
-  .top-nav-logo-cross::before {
-    top: 14px;
-    left: 4px;
-    width: 22px;
-  }
-
-  .top-nav-logo-cross::after {
-    top: 4px;
-    left: 14px;
-    height: 22px;
+  .top-nav-logo-mark .project-axis-mark-svg {
+    width: 27px;
+    height: 27px;
   }
 
   .top-nav-logo-tagline {
