@@ -63,7 +63,8 @@ export function ProjectAxisMark({ className = "" }: BrandClassProps) {
 export function ProjectAxisWordmark({ className = "" }: BrandClassProps) {
   return (
     <span className={`project-axis-wordmark${className ? ` ${className}` : ""}`}>
-      Project<strong>Axis</strong>
+      <span className="project-axis-wordmark-project">Project</span>
+      <strong className="project-axis-wordmark-axis">Axis</strong>
     </span>
   );
 }
